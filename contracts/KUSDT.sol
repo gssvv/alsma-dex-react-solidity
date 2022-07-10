@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @custom:security-contact alxx.gusev@gmail.com
 contract KindaUSDT is ERC20, Ownable {
-    constructor() ERC20("KindaUSDT", "USDT") {
+    constructor() ERC20("KindaUSDT", "KUSDT") {
         _mint(msg.sender, 1000 * 10**decimals());
     }
 
