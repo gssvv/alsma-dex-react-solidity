@@ -3,8 +3,13 @@ module.exports = {
     node: true,
     mocha: true,
   },
-  parser: 'babel-eslint',
-  extends: ['airbnb-base'],
+  parser: '@typescript-eslint/parser',
+  plugins: [
+    '@typescript-eslint',
+  ],
+  extends: [
+    'airbnb-base',
+  ],
   rules: {
     radix: [0],
     'import/extensions': [0],
@@ -31,5 +36,8 @@ module.exports = {
     'no-underscore-dangle': [0],
     'no-console': 0,
     'no-alert': 1,
+
+    'no-unused-vars': 'off',
+    '@typescript-eslint/no-unused-vars': ['error'],
   },
 };

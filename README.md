@@ -1,5 +1,5 @@
 # ALSMA DEX
-> ALSMA is a [Recursive acronym](https://en.wikipedia.org/wiki/Recursive_acronym) and stands for «Alex learning soldity making ALSMA»
+> ALSMA is a [Recursive acronym](https://en.wikipedia.org/wiki/Recursive_acronym) and stands for «~~Alex~~ Anyone learning soldity making ALSMA»
 
 # Deployed contracts
 ## [Mumbai](https://mumbai.polygonscan.com/)
@@ -11,3 +11,12 @@ KUSDT — [`0x00f47C20E5fDbf5A5556963A555879923a9E19e5`](https://mumbai.polygons
 # TODO
 
 1. Verify contract source code
+
+
+<!-- 
+
+  Article ideas:
+
+   - How to test interaction with other contracts
+ 
+-->

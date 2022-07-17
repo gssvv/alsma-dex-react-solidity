@@ -71,7 +71,7 @@ describe('KindaUSDT', () => {
         await new Promise((res) => kbtc.transfer(
           addr1.address, floatToInteger(INITIAL_STOCK + 1),
         ).then(res.bind(this, false)).catch(res.bind(this, true))),
-      ).to.equal(true, 'Throw an error');
+      ).to.equal(true, 'Throws an error');
     });
   });
 
