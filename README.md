@@ -1,5 +1,5 @@
 # ALSMA DEX
-> ALSMA is a [Recursive acronym](https://en.wikipedia.org/wiki/Recursive_acronym) and stands for «~~Alex~~ Anyone learning soldity making ALSMA»
+> ALSMA is a [Recursive acronym](https://en.wikipedia.org/wiki/Recursive_acronym) and stands for «~~Alex~~ Anyone learning Solidity making ALSMA»
 
 # Deployed contracts
 ## [Mumbai](https://mumbai.polygonscan.com/)
