@@ -138,6 +138,16 @@ describe('ALSMADEX', () => {
      * [ ] Transfer comission to stakers` accounts (should find an optimal way)
      * [ ] Staking rates calculation (larger pools means less comission)
      */
+    it('Should get profit estimation from staking', () => {});
+    it('Should stake tokens', () => {});
+    it('Should recalculate token comission after staking', () => {});
+    it('Should distribute profits from swap comission among stakers and DEX', () => {});
+    it('Should recalculate token comission after swap', () => {});
+    it('Should get staking status (profits, time)', () => {});
+    it('Should withdraw profits from staking', () => {});
+    it('Should take tokens back from staking', () => {});
+    it('Should not withdraw profits from DEX as non-owner', () => {});
+    it('Should withdraw profits from DEX as owner', () => {});
   });
 
   describe('State', () => {
@@ -210,6 +220,18 @@ describe('ALSMADEX', () => {
         SWAP_AMOUNT, // swap input token amount
       );
       // todo
+    });
+
+    it('Should perform swap', () => {
+
+    });
+
+    it('Should not perform swap when not enough tokens on signer`s balance', () => {
+
+    });
+
+    it('Should not perform swap when not enough tokens on contract`s balance', () => {
+
     });
   });
 });
