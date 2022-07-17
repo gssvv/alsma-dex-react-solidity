@@ -25,7 +25,6 @@ namespace ALSMADEX {
 
   export interface Contract extends EthersContract {
     addToken(address: Token['address'], contractAddress: Token['dataFeedAddress']): Promise<Token>
-    removeToken(address: Token['address']): Promise<void>
     getTokenDetails(address: Token['address']): Promise<TokenDetails>
     getTokenList(): Promise<Token[]>
   }
@@ -82,7 +81,6 @@ describe('ALSMADEX', () => {
      *  [ ] Should not add tokens with symbol that already exists
      *  [x] Add contract to read token exchange rate from (<TOKEN> / USD)
      * [ ] Update tokens
-     * [x] Remove tokens
      */
     beforeEach(async () => {
       contract = await deployContract();
@@ -129,53 +127,6 @@ describe('ALSMADEX', () => {
             ),
           ),
         ).to.equal(true, 'Throws an error');
-      });
-    });
-
-    describe('Token removal', () => {
-      before(async () => {
-        /**
-         * Adding KBTC token to remove it later on
-         */
-        await contract.addToken.call(
-          { from: owner },
-          kbtc.address, // token address
-          BTC_DATA_FEED_CONTRACT, // data feed contract address
-        );
-      });
-
-      it('Should not remove token that was not added previously', async () => {
-        expect(
-          await isErrorThrowedAsync(
-            contract.removeToken.bind(
-              { from: owner },
-              kusdt.address, // token address that was not added previously
-            ),
-          ),
-        ).to.equal(true, 'Throws an error');
-      });
-
-      it('Should not remove token as non-owner', async () => {
-        expect(
-          await isErrorThrowedAsync(
-            contract.removeToken.bind(
-              { from: owner },
-              kbtc.address, // token address
-            ),
-          ),
-        ).to.equal(true, 'Throws an error');
-      });
-
-      it('Should remove existing token as owner', async () => {
-        await contract.removeToken.call(
-          { from: owner },
-          kbtc.address, // token address that was added in before() hook
-        );
-
-        const tokenList = await contract.getTokenList();
-        const removedToken = tokenList.find((t: ALSMADEX.Token) => t.address === kbtc.address);
-
-        expect(removedToken).to.equal(undefined);
       });
     });
   });
