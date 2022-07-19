@@ -33,8 +33,18 @@ namespace ALSMADEX {
     addToken(address: Token['address'], contractAddress: Token['dataFeedAddress']): Promise<Token>
     getTokenDetails(address: Token['address']): Promise<TokenDetails>
     getTokenList(): Promise<Token[]>
+
     stake(tokenAddress: Token['address'], amount: number): Promise<StakeDetails>
     getStakeDetails(tokenAddress: Token['address']): Promise<StakeDetails>
+    getStakeDetailsForAddress(address: string, tokenAddress: Token['address']): Promise<StakeDetails>
+    unstake(tokenAddress: Token['address'], amount: number): Promise<StakeDetails>
+
+    swap(fromTokenAddress: Token['address'], toTokenAddress: Token['address'], fromTokenAmount: number): Promise<StakeDetails>
+    swapWithSlippageCheck(fromTokenAddress: Token['address'], toTokenAddress: Token['address'], fromTokenAmount: number, expectedToTokenAmount: number): Promise<StakeDetails>
+    withdrawAllStakingProfits(fromTokenAddress: Token['address']): Promise<StakeDetails['earned']>
+
+    getTreasuryBalance(tokenAddress: Token['address']): Promise<number>
+    withdrawTreasury(tokenAddress: Token['address']): Promise<number>
   }
 }
 
@@ -181,9 +191,10 @@ describe('ALSMADEX', () => {
   });
 
   describe('Staking workflow', () => {
-    const STAKE_AMOUNT = 100_000;
+    const DEFAULT_STAKE_AMOUNT = 100_000;
 
     before(async () => {
+      contract = await deployContract();
       await contract.addToken.call(
         { from: owner },
         kbtc.address,
@@ -195,6 +206,27 @@ describe('ALSMADEX', () => {
         USDT_DATA_FEED_CONTRACT,
       );
     });
+
+    const approveAllTokensAndStake = async (
+      from: SignerWithAddress,
+      amount = DEFAULT_STAKE_AMOUNT,
+    ): Promise<ALSMADEX.StakeDetails> => {
+      await kusdt.approve.call(
+        { from },
+        contract.address,
+        ADDR1_KUSDT_BALANCE,
+      );
+      await kbtc.approve.call(
+        { from },
+        contract.address,
+        ADDR1_KBTC_BALANCE,
+      );
+      return await contract.stake.call(
+        { from },
+        kbtc.address,
+        amount,
+      );
+    };
     /**
      * @todo
      * [ ] Stake tokens
@@ -208,7 +240,7 @@ describe('ALSMADEX', () => {
           contract.stake.bind(
             { from: addr2 }, // address that does not have any tokens
             kbtc.address,
-            STAKE_AMOUNT,
+            DEFAULT_STAKE_AMOUNT,
           ),
         ),
       ).to.equal(true, 'Throws an error');
@@ -220,7 +252,7 @@ describe('ALSMADEX', () => {
           contract.stake.bind(
             { from: addr1 },
             kbtc.address,
-            STAKE_AMOUNT,
+            DEFAULT_STAKE_AMOUNT,
           ),
         ),
       ).to.equal(true, 'Throws an error');
@@ -232,64 +264,138 @@ describe('ALSMADEX', () => {
           contract.stake.bind(
             { from: addr1 },
             contract.address, // there is no token with such contract
-            STAKE_AMOUNT,
+            DEFAULT_STAKE_AMOUNT,
           ),
         ),
       ).to.equal(true, 'Throws an error');
     });
 
     it('Should stake tokens', async () => {
-      await kusdt.approve.call(
-        { from: addr1 },
-        contract.address,
-        ADDR1_KUSDT_BALANCE,
-      );
-      await kbtc.approve.call(
-        { from: addr1 },
-        contract.address,
-        ADDR1_KBTC_BALANCE,
-      );
+      const { staked, earned } = await approveAllTokensAndStake(addr1);
 
-      const { staked, earned } = await contract.stake.call(
-        { from: addr1 },
-        kbtc.address,
-        STAKE_AMOUNT,
-      );
-
-      expect(staked).to.equal(STAKE_AMOUNT);
+      expect(staked).to.equal(DEFAULT_STAKE_AMOUNT);
       expect(earned).to.equal(0);
     });
 
     it('Should get staking details', async () => {
+      await approveAllTokensAndStake(addr1);
+
       const { staked, earned } = await contract.getStakeDetails.call(
         { from: addr1 },
         kbtc.address,
       );
 
-      expect(staked).to.equal(STAKE_AMOUNT);
+      expect(staked).to.equal(DEFAULT_STAKE_AMOUNT);
       expect(earned).to.equal(0);
     });
 
-    it('Should recalculate token comission after staking', () => {
+    it('Should recalculate token comission after staking', async () => {
+      const { comissionRate: initialComissionRate } = await contract.getTokenDetails.call(
+        { from: addr1 },
+        kbtc.address,
+      );
 
+      await approveAllTokensAndStake(addr1);
+
+      const { comissionRate: nextComissionRate } = await contract.getTokenDetails.call(
+        { from: addr1 },
+        kbtc.address,
+      );
+
+      expect(nextComissionRate).to.be.greaterThan(initialComissionRate);
     });
 
-    it('Should distribute profits from swap comission among stakers and DEX', () => {});
+    it('Should distribute profits from swap comission among stakers and DEX', async () => {
+      await approveAllTokensAndStake(addr1);
+      await approveAllTokensAndStake(
+        owner,
+        DEFAULT_STAKE_AMOUNT / 2,
+      ); // less stake means less profits
 
-    it('Should recalculate token comission after swap', () => {});
+      await contract.swap.call(
+        { from: owner },
+        kbtc.address,
+        kusdt.address,
+        DEFAULT_STAKE_AMOUNT,
+      );
 
-    it('Should get staking status (profits, time)', () => {});
+      const { earned: earnedOnAddr1 } = await contract.getStakeDetailsForAddress.call(
+        { from: addr1 },
+        addr1.address,
+        kbtc.address,
+      );
 
-    it('Should withdraw profits from staking', () => {});
+      const { earned: earnedOnOwner } = await contract.getStakeDetailsForAddress.call(
+        { from: addr1 },
+        owner.address,
+        kbtc.address,
+      );
 
-    it('Should fail to take tokens back from staking if there are no any', () => {});
+      const treasuryBalance = await contract.getTreasuryBalance.call(
+        { from: owner },
+        kbtc.address,
+      );
 
-    it('Should fail to withdraw profits from DEX as non-owner', () => {});
+      expect(earnedOnAddr1).to.be.greaterThan(0);
+      expect(earnedOnOwner).to.be.greaterThan(0);
+      expect(earnedOnAddr1).to.be.greaterThan(earnedOnOwner); // as owner staked less than addr1
+      expect(treasuryBalance).to.be.greaterThan(0); // as owner staked less than addr1
+    });
 
-    it('Should withdraw profits from DEX as owner', () => {});
+    it('Should withdraw staking profits', async () => {
+      await approveAllTokensAndStake(addr1);
+
+      const initialBalance = kbtc.balanceOf(addr1.address);
+
+      await contract.swap.call(
+        { from: owner },
+        kbtc.address,
+        kusdt.address,
+        DEFAULT_STAKE_AMOUNT,
+      );
+
+      const { earned: earnedAfterSwap } = await contract.getStakeDetails
+        .call({ from: addr1 }, kbtc.address);
+
+      const nextBalance = kbtc.balanceOf(addr1.address);
+
+      const earnedAfterWithdrawal = await contract.withdrawAllStakingProfits
+        .call({ from: addr1 }, kbtc.address);
+
+      expect(earnedAfterSwap).to.be.greaterThan(0); // earned something
+      expect(nextBalance).to.be.greaterThan(initialBalance); // received profit to the wallet
+      expect(earnedAfterWithdrawal).to.equal(0);
+    });
+
+    it('Should fail to unstake more than staked', async () => {
+      // nothing is staked at this point
+      expect(
+        await isThrowingErrorAsync(
+          contract.unstake.bind({ from: addr1 }, kbtc.address, 100),
+        ),
+      ).to.equal(true, 'Throws an error');
+    });
+
+    it('Should unstake and upadted balances correctly', async () => {
+      await approveAllTokensAndStake(addr1);
+
+      const beforeUnstakeBalance = kbtc.balanceOf(addr1.address);
+      const { staked: beforeUnstakeStakingBalance } = await contract.getStakeDetails
+        .call({ from: addr1 }, kbtc.address);
+
+      await contract.unstake.bind({ from: addr1 }, kbtc.address, DEFAULT_STAKE_AMOUNT);
+
+      const afterUnstakeBalance = kbtc.balanceOf(addr1.address);
+      const { staked: afterUnstakeStakingBalance } = await contract.getStakeDetails
+        .call({ from: addr1 }, kbtc.address);
+
+      expect(afterUnstakeBalance - beforeUnstakeBalance).to.equal(DEFAULT_STAKE_AMOUNT);
+      expect(beforeUnstakeStakingBalance).to.equal(DEFAULT_STAKE_AMOUNT);
+      expect(afterUnstakeStakingBalance).to.equal(0); // balance is 0 again
+    });
   });
 
-  describe('State', () => {
+  describe('Tokens info', () => {
     /**
      * @todo
      * [x] Get list of tokens
@@ -337,6 +443,14 @@ describe('ALSMADEX', () => {
     });
   });
 
+  describe('Treasury', () => {
+    it('Should return balance of a particular token', async () => {});
+    it('Should fail to withdraw as non-owner', async () => {});
+    it('Should fail to withdraw when there are not enough balance', async () => {});
+    it('Should withdraw particular sum as owner', async () => {});
+    it('Should withdraw all as owner', async () => {});
+  });
+
   describe('Swap', () => {
     /**
      * @todo
@@ -366,11 +480,18 @@ describe('ALSMADEX', () => {
 
     });
 
-    it('Should fail to perform swap when not enough tokens on signer`s balance', () => {
+    it('Should fail to swap with wrong fromToken', () => {});
+    it('Should fail to swap with wrong toToken', () => {});
+
+    it('Should fail to swap when not enough tokens on signer`s balance', () => {
 
     });
 
-    it('Should fail to perform swap when not enough tokens on contract`s balance', () => {
+    it('Should fail to swap when not enough tokens on contract`s balance', () => {
+
+    });
+
+    it('Should fail to swap with more than 0.5% slippage', () => {
 
     });
   });
