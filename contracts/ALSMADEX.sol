@@ -14,5 +14,8 @@ import "hardhat/console.sol";
 */
 
 contract ALSMADEX {
-
+    struct MappingEntry {
+        string name;
+    }
+    mapping(address => mapping(address => MappingEntry)) name;
 }

@@ -8,6 +8,7 @@ import { expect } from 'chai';
  *
  * @todo
  *  [ ] Custom token symbol support
+ *  [ ] Make all tests independent
  */
 
 namespace ALSMADEX {
@@ -23,10 +24,17 @@ namespace ALSMADEX {
     comissionRate: number
   }
 
+  export interface StakeDetails {
+    staked: number
+    earned: number
+  }
+
   export interface Contract extends EthersContract {
     addToken(address: Token['address'], contractAddress: Token['dataFeedAddress']): Promise<Token>
     getTokenDetails(address: Token['address']): Promise<TokenDetails>
     getTokenList(): Promise<Token[]>
+    stake(tokenAddress: Token['address'], amount: number): Promise<StakeDetails>
+    getStakeDetails(tokenAddress: Token['address']): Promise<StakeDetails>
   }
 }
 
@@ -35,7 +43,7 @@ namespace ALSMADEX {
  * @param {Function} fn
  * @returns {Promise<boolean>}
  */
-const isErrorThrowedAsync = (fn: Function): Promise<boolean> => new Promise((res) => {
+const isThrowingErrorAsync = (fn: Function): Promise<boolean> => new Promise((res) => {
   fn().then(res.bind(this, false)).catch(res.bind(this, true));
 });
 
@@ -44,6 +52,7 @@ describe('ALSMADEX', () => {
 
   let owner: SignerWithAddress;
   let addr1: SignerWithAddress;
+  let addr2: SignerWithAddress;
 
   let kbtc: EthersContract;
   let kusdt: EthersContract;
@@ -56,15 +65,21 @@ describe('ALSMADEX', () => {
   const USDT_DATA_FEED_CONTRACT = '0x92C09849638959196E976289418e5973CC96d645'; // to be replaced with mock
   const USDT_TO_USD_RATE = 99980000; // 8 decimals, used for mocking
 
+  const ADDR1_KBTC_BALANCE = 100000000;
+  const ADDR1_KUSDT_BALANCE = 100000000;
+
   const deployContract = async () => await (await ethers.getContractFactory('ALSMADEX')).deploy() as ALSMADEX.Contract;
 
   before(async () => {
     kbtc = await (await ethers.getContractFactory('KindaBTC')).deploy();
     kusdt = await (await ethers.getContractFactory('KindaUSDT')).deploy();
+
+    await kbtc.transfer(addr1.address, ADDR1_KBTC_BALANCE);
+    await kusdt.transfer(addr1.address, ADDR1_KUSDT_BALANCE);
   });
 
   beforeEach(async () => {
-    [owner, addr1] = await ethers.getSigners();
+    [owner, addr1, addr2] = await ethers.getSigners();
     contract = await deployContract();
   });
 
@@ -87,9 +102,37 @@ describe('ALSMADEX', () => {
     });
 
     describe('Token addition', () => {
+      beforeEach(async () => {
+        contract = await deployContract();
+      });
+
       it('Should not add token as non-owner', async () => {
         expect(
-          await isErrorThrowedAsync(
+          await isThrowingErrorAsync(
+            contract.addToken.bind(
+              { from: addr1 },
+              kbtc.address, // token address
+              BTC_DATA_FEED_CONTRACT, // data feed contract address
+            ),
+          ),
+        ).to.equal(true, 'Throws an error');
+      });
+
+      it('Should not add non-erc20 token', async () => {
+        expect(
+          await isThrowingErrorAsync(
+            contract.addToken.bind(
+              { from: addr1 },
+              contract.address, // token address
+              BTC_DATA_FEED_CONTRACT, // data feed contract address
+            ),
+          ),
+        ).to.equal(true, 'Throws an error');
+      });
+
+      it('Should not add token with incorrect data feed contract', async () => {
+        expect(
+          await isThrowingErrorAsync(
             contract.addToken.bind(
               { from: addr1 },
               kbtc.address, // token address
@@ -118,8 +161,14 @@ describe('ALSMADEX', () => {
       });
 
       it('Should not add token with contract that already exists', async () => {
+        await contract.addToken.call(
+          { from: owner },
+          kbtc.address, // token address
+          BTC_DATA_FEED_CONTRACT, // data feed contract address
+        );
+
         expect(
-          await isErrorThrowedAsync(
+          await isThrowingErrorAsync(
             contract.addToken.bind(
               { from: owner },
               kbtc.address, // token address
@@ -131,22 +180,112 @@ describe('ALSMADEX', () => {
     });
   });
 
-  describe('Staking program', () => {
+  describe('Staking workflow', () => {
+    const STAKE_AMOUNT = 100_000;
+
+    before(async () => {
+      await contract.addToken.call(
+        { from: owner },
+        kbtc.address,
+        BTC_DATA_FEED_CONTRACT,
+      );
+      await contract.addToken.call(
+        { from: owner },
+        kusdt.address,
+        USDT_DATA_FEED_CONTRACT,
+      );
+    });
     /**
      * @todo
      * [ ] Stake tokens
      * [ ] Transfer comission to stakers` accounts (should find an optimal way)
-     * [ ] Staking rates calculation (larger pools means less comission)
+     * [ ] Staking rates calculation (no way to do this at the moment as it depends on the volume)
      */
-    it('Should get profit estimation from staking', () => {});
-    it('Should stake tokens', () => {});
-    it('Should recalculate token comission after staking', () => {});
+    // it('Should get profit estimation from staking', async () => {});
+    it('Should not stake when there are not enough of them on signer`s balance', async () => {
+      expect(
+        await isThrowingErrorAsync(
+          contract.stake.bind(
+            { from: addr2 }, // address that does not have any tokens
+            kbtc.address,
+            STAKE_AMOUNT,
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
+    });
+
+    it('Should not stake when there are not enough approved tokens', async () => {
+      expect(
+        await isThrowingErrorAsync(
+          contract.stake.bind(
+            { from: addr1 },
+            kbtc.address,
+            STAKE_AMOUNT,
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
+    });
+
+    it('Should not stake token that does not exist', async () => {
+      expect(
+        await isThrowingErrorAsync(
+          contract.stake.bind(
+            { from: addr1 },
+            contract.address, // there is no token with such contract
+            STAKE_AMOUNT,
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
+    });
+
+    it('Should stake tokens', async () => {
+      await kusdt.approve.call(
+        { from: addr1 },
+        contract.address,
+        ADDR1_KUSDT_BALANCE,
+      );
+      await kbtc.approve.call(
+        { from: addr1 },
+        contract.address,
+        ADDR1_KBTC_BALANCE,
+      );
+
+      const { staked, earned } = await contract.stake.call(
+        { from: addr1 },
+        kbtc.address,
+        STAKE_AMOUNT,
+      );
+
+      expect(staked).to.equal(STAKE_AMOUNT);
+      expect(earned).to.equal(0);
+    });
+
+    it('Should get staking details', async () => {
+      const { staked, earned } = await contract.getStakeDetails.call(
+        { from: addr1 },
+        kbtc.address,
+      );
+
+      expect(staked).to.equal(STAKE_AMOUNT);
+      expect(earned).to.equal(0);
+    });
+
+    it('Should recalculate token comission after staking', () => {
+
+    });
+
     it('Should distribute profits from swap comission among stakers and DEX', () => {});
+
     it('Should recalculate token comission after swap', () => {});
+
     it('Should get staking status (profits, time)', () => {});
+
     it('Should withdraw profits from staking', () => {});
-    it('Should take tokens back from staking', () => {});
+
+    it('Should not take tokens back from staking if there are no any', () => {});
+
     it('Should not withdraw profits from DEX as non-owner', () => {});
+
     it('Should withdraw profits from DEX as owner', () => {});
   });
 
@@ -158,10 +297,11 @@ describe('ALSMADEX', () => {
      * [x] Caculate swap (exchange rate)
      */
 
-    before(async () => {
+    beforeEach(async () => {
       /**
        * Adding tokens for testing
        */
+      contract = await deployContract();
       await contract.addToken.call(
         { from: owner },
         kbtc.address,
