@@ -93,7 +93,7 @@ describe('ALSMADEX', () => {
     /**
      * @todo
      * [x] Add tokens
-     *  [ ] Should not add tokens with symbol that already exists
+     *  [ ] Should fail to add tokens with symbol that already exists
      *  [x] Add contract to read token exchange rate from (<TOKEN> / USD)
      * [ ] Update tokens
      */
@@ -106,7 +106,7 @@ describe('ALSMADEX', () => {
         contract = await deployContract();
       });
 
-      it('Should not add token as non-owner', async () => {
+      it('Should fail to add token as non-owner', async () => {
         expect(
           await isThrowingErrorAsync(
             contract.addToken.bind(
@@ -118,7 +118,7 @@ describe('ALSMADEX', () => {
         ).to.equal(true, 'Throws an error');
       });
 
-      it('Should not add non-erc20 token', async () => {
+      it('Should fail to add non-erc20 token', async () => {
         expect(
           await isThrowingErrorAsync(
             contract.addToken.bind(
@@ -130,7 +130,7 @@ describe('ALSMADEX', () => {
         ).to.equal(true, 'Throws an error');
       });
 
-      it('Should not add token with incorrect data feed contract', async () => {
+      it('Should fail to add token with incorrect data feed contract', async () => {
         expect(
           await isThrowingErrorAsync(
             contract.addToken.bind(
@@ -160,7 +160,7 @@ describe('ALSMADEX', () => {
           .to.equal(newToken?.dataFeedAddress).and.equal(BTC_DATA_FEED_CONTRACT);
       });
 
-      it('Should not add token with contract that already exists', async () => {
+      it('Should fail to add token with contract that already exists', async () => {
         await contract.addToken.call(
           { from: owner },
           kbtc.address, // token address
@@ -202,7 +202,7 @@ describe('ALSMADEX', () => {
      * [ ] Staking rates calculation (no way to do this at the moment as it depends on the volume)
      */
     // it('Should get profit estimation from staking', async () => {});
-    it('Should not stake when there are not enough of them on signer`s balance', async () => {
+    it('Should fail to stake when there are not enough of them on signer`s balance', async () => {
       expect(
         await isThrowingErrorAsync(
           contract.stake.bind(
@@ -214,7 +214,7 @@ describe('ALSMADEX', () => {
       ).to.equal(true, 'Throws an error');
     });
 
-    it('Should not stake when there are not enough approved tokens', async () => {
+    it('Should fail to stake when there are not enough approved tokens', async () => {
       expect(
         await isThrowingErrorAsync(
           contract.stake.bind(
@@ -226,7 +226,7 @@ describe('ALSMADEX', () => {
       ).to.equal(true, 'Throws an error');
     });
 
-    it('Should not stake token that does not exist', async () => {
+    it('Should fail to stake token that does not exist', async () => {
       expect(
         await isThrowingErrorAsync(
           contract.stake.bind(
@@ -282,9 +282,9 @@ describe('ALSMADEX', () => {
 
     it('Should withdraw profits from staking', () => {});
 
-    it('Should not take tokens back from staking if there are no any', () => {});
+    it('Should fail to take tokens back from staking if there are no any', () => {});
 
-    it('Should not withdraw profits from DEX as non-owner', () => {});
+    it('Should fail to withdraw profits from DEX as non-owner', () => {});
 
     it('Should withdraw profits from DEX as owner', () => {});
   });
@@ -366,11 +366,11 @@ describe('ALSMADEX', () => {
 
     });
 
-    it('Should not perform swap when not enough tokens on signer`s balance', () => {
+    it('Should fail to perform swap when not enough tokens on signer`s balance', () => {
 
     });
 
-    it('Should not perform swap when not enough tokens on contract`s balance', () => {
+    it('Should fail to perform swap when not enough tokens on contract`s balance', () => {
 
     });
   });
