@@ -11,11 +11,11 @@ describe('DataFeedBTCUSDMock', () => {
 
   it('Should return the right data in latestRoundData', async () => {
     const {
-      0: roundId,
-      1: answer,
-      2: startedAt,
-      3: updatedAt,
-      4: answeredInRound,
+      roundId,
+      answer,
+      startedAt,
+      updatedAt,
+      answeredInRound,
     } = await contract.latestRoundData();
 
     expect(roundId.eq(BigNumber.from('18446744073709554604'))).to.equal(true);

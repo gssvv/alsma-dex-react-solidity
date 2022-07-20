@@ -1,21 +1,62 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
+
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-/*
-  Sorry, use https://translate.google.com/
+interface DataFeed {
+    function latestRoundData()
+        external
+        pure
+        returns (
+            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        );
 
-  Фукнционал:
-  - Обменивать одну монету на другую (MATIC/KBTC/KUSDT) за счет пула
-  - Хранить и обновлять курс MATIC и KBTC через Oracle Chainlink
-  - Возможность фарминга монеты за счет пополнения пула
-    - Система расчета комиссии и прибыли, чтобы экономика имела смысл
-  - Возможность добавлять новые монеты (контракты) для обмена/фарминга (onlyOwner)
-*/
+    function decimals() external pure returns (uint8);
+}
 
-contract ALSMADEX {
-    struct MappingEntry {
-        string name;
+contract ALSMADEXTokens is Ownable {
+    struct Token {
+        address tokenAddress;
+        address dataFeedAddress;
+        string symbol;
     }
-    mapping(address => mapping(address => MappingEntry)) name;
+
+    Token[] tokens;
+
+    function addToken(address tokenAddress, address tokenDataFeedAddress)
+        external
+        onlyOwner
+        returns (
+            address,
+            address,
+            string memory
+        )
+    {
+        ERC20 tokenContract = ERC20(tokenAddress);
+
+        tokenContract.balanceOf(tokenAddress); // prevents adding wrong contracts
+        DataFeed(tokenDataFeedAddress).latestRoundData(); // prevents adding wrong contracts
+
+        string memory tokenContractName = tokenContract.name();
+
+        tokens.push(
+            Token(tokenAddress, tokenDataFeedAddress, tokenContractName)
+        );
+
+        return (tokenAddress, tokenDataFeedAddress, tokenContractName);
+    }
+
+    function test() external returns (uint104) {
+        return 1;
+    }
+}
+
+contract ALSMADEX is ALSMADEXTokens {
+    fallback() external {}
 }
