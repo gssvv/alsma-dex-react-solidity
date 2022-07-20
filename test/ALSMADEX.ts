@@ -39,6 +39,11 @@ namespace ALSMADEX {
     getStakeDetailsForAddress(address: string, tokenAddress: Token['address']): Promise<StakeDetails>
     unstake(tokenAddress: Token['address'], amount: number): Promise<StakeDetails>
 
+    getEstimatedSwapDetails(fromTokenAddress: Token['address'], toTokenAddress: Token['address'], fromTokenAmount: number): Promise<{
+      0: number,
+      1: number,
+      2: number,
+    }>
     swap(fromTokenAddress: Token['address'], toTokenAddress: Token['address'], fromTokenAmount: number): Promise<StakeDetails>
     swapWithSlippageCheck(fromTokenAddress: Token['address'], toTokenAddress: Token['address'], fromTokenAmount: number, expectedToTokenAmount: number): Promise<StakeDetails>
     withdrawAllStakingProfits(fromTokenAddress: Token['address']): Promise<StakeDetails['earned']>
@@ -93,20 +98,7 @@ describe('ALSMADEX', () => {
     contract = await deployContract();
   });
 
-  // describe('Deployment', () => {
-  //   it('Should deploy without any errors', async () => {
-
-  //   });
-  // });
-
   describe('Configuration', () => {
-    /**
-     * @todo
-     * [x] Add tokens
-     *  [ ] Should fail to add tokens with symbol that already exists
-     *  [x] Add contract to read token exchange rate from (<TOKEN> / USD)
-     * [ ] Update tokens
-     */
     beforeEach(async () => {
       contract = await deployContract();
     });
@@ -227,13 +219,7 @@ describe('ALSMADEX', () => {
         amount,
       );
     };
-    /**
-     * @todo
-     * [ ] Stake tokens
-     * [ ] Transfer comission to stakers` accounts (should find an optimal way)
-     * [ ] Staking rates calculation (no way to do this at the moment as it depends on the volume)
-     */
-    // it('Should get profit estimation from staking', async () => {});
+
     it('Should fail to stake when there are not enough of them on signer`s balance', async () => {
       expect(
         await isThrowingErrorAsync(
@@ -396,13 +382,6 @@ describe('ALSMADEX', () => {
   });
 
   describe('Tokens info', () => {
-    /**
-     * @todo
-     * [x] Get list of tokens
-     * [x] Get amount of tokens available
-     * [x] Caculate swap (exchange rate)
-     */
-
     beforeEach(async () => {
       /**
        * Adding tokens for testing
@@ -452,15 +431,24 @@ describe('ALSMADEX', () => {
   });
 
   describe('Swap', () => {
-    /**
-     * @todo
-     * [ ] Perform a token swap
-     *    [ ] Recieve/transfer right tokens
-     *    [ ] Transfer comission to stakers` accounts (should find an optimal way)
-     */
     const SWAP_AMOUNT = 100_000;
+    const DEFAULT_STAKE_AMOUNT = 100_000_000_000;
 
     // do some staking beforehand
+
+    beforeEach(async () => {
+      contract = await deployContract();
+      await contract.stake.call(
+        { from: owner },
+        kbtc.address,
+        DEFAULT_STAKE_AMOUNT,
+      );
+      await contract.stake.call(
+        { from: owner },
+        kusdt.address,
+        DEFAULT_STAKE_AMOUNT,
+      );
+    });
 
     it('Should return estimated swap details', async () => {
       const {
@@ -473,26 +461,126 @@ describe('ALSMADEX', () => {
         kusdt.address, // swap output token
         SWAP_AMOUNT, // swap input token amount
       );
-      // todo
+
+      expect(swapRate).to.be.greaterThan(0);
+      expect(comissionRate).to.be.greaterThan(0);
+      expect(estimatedSwapOutput).to.be.greaterThan(0);
     });
 
-    it('Should perform swap', () => {
+    it('Should perform swap', async () => {
+      await kbtc.approve.call(
+        { from: addr1 },
+        contract.address,
+        ADDR1_KBTC_BALANCE,
+      );
 
+      const kbtcBalanceBeforeSwap = await kbtc.balanceOf(addr1.address);
+      const kusdtBalanceBeforeSwap = await kusdt.balanceOf(addr1.address);
+
+      const {
+        2: estimatedSwapOutput,
+      } = await contract.getEstimatedSwapDetails.call(
+        { from: addr1 },
+        kbtc.address,
+        kusdt.address,
+        SWAP_AMOUNT,
+      );
+
+      await contract.swap.call(
+        { from: addr1 },
+        kbtc.address,
+        kusdt.address,
+        SWAP_AMOUNT,
+      );
+
+      const kbtcBalanceAfterSwap = await kbtc.balanceOf(addr1.address);
+      const kusdtBalanceAfterSwap = await kusdt.balanceOf(addr1.address);
+
+      expect(kbtcBalanceBeforeSwap).to.be.greaterThan(kbtcBalanceAfterSwap);
+      expect(kusdtBalanceAfterSwap).to.be.greaterThan(kusdtBalanceBeforeSwap);
+      expect(kusdtBalanceBeforeSwap + estimatedSwapOutput).to.equal(kusdtBalanceAfterSwap);
     });
 
-    it('Should fail to swap with wrong fromToken', () => {});
-    it('Should fail to swap with wrong toToken', () => {});
-
-    it('Should fail to swap when not enough tokens on signer`s balance', () => {
-
+    it('Should fail to swap with wrong fromToken', async () => {
+      expect(
+        isThrowingErrorAsync(
+          await contract.swap.bind(
+            { from: addr1 },
+            contract.address, // this contract is not a token
+            kusdt.address,
+            SWAP_AMOUNT,
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
     });
 
-    it('Should fail to swap when not enough tokens on contract`s balance', () => {
-
+    it('Should fail to swap with wrong toToken', async () => {
+      expect(
+        isThrowingErrorAsync(
+          await contract.swap.bind(
+            { from: addr1 },
+            kusdt.address,
+            contract.address, // this contract is not a token
+            SWAP_AMOUNT,
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
     });
 
-    it('Should fail to swap with more than 0.5% slippage', () => {
+    it('Should fail to swap when not enough tokens on signer`s balance', async () => {
+      const balance = await kbtc.balanceOf(addr1.address);
 
+      // otherwise the error may come from other reason
+      expect(DEFAULT_STAKE_AMOUNT).to.be.greaterThan(balance);
+
+      expect(
+        isThrowingErrorAsync(
+          await contract.swap.bind(
+            { from: addr1 },
+            kbtc.address,
+            kusdt.address,
+            balance + 1, // more than available
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
+    });
+
+    it('Should fail to swap when not enough tokens on contract`s balance', async () => {
+      await kbtc.mint(addr1.address, DEFAULT_STAKE_AMOUNT + 1);
+
+      expect(
+        isThrowingErrorAsync(
+          await contract.swap.bind(
+            { from: addr1 },
+            kbtc.address,
+            kusdt.address,
+            DEFAULT_STAKE_AMOUNT + 1, // more than available
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
+    });
+
+    it('Should fail to swap with more than 0.5% slippage', async () => {
+      const {
+        2: estimatedSwapOutput,
+      } = await contract.getEstimatedSwapDetails.call(
+        { from: addr1 },
+        kbtc.address,
+        kusdt.address,
+        SWAP_AMOUNT,
+      );
+
+      expect(
+        isThrowingErrorAsync(
+          contract.swapWithSlippageCheck.bind(
+            { from: addr1 },
+            kbtc.address,
+            kusdt.address,
+            Math.round(SWAP_AMOUNT * 0.994), // substracting 0.6% to make it fail
+            estimatedSwapOutput,
+          ),
+        ),
+      ).to.equal(true, 'Throws an error');
     });
   });
 });
