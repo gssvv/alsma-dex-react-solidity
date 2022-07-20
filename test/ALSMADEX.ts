@@ -13,43 +13,45 @@ import { expect } from 'chai';
 
 namespace ALSMADEX {
   export interface Token {
-    0: string // tokenAdress
-    1: string // dataFeedAddress
-    2: string // symbol
+    tokenAddress: string
+    dataFeedAddress: string
+    symbol: string
   }
 
   export interface TokenDetails extends Token {
-    3: number // balance
-    4: number // exchangeRate
-    5: number // comissionRate
+    balance: number
+    exchangeRate: number
+    comissionRate: number
   }
 
   export interface StakeDetails {
-    0: number // staked
-    1: number // earned
+    staked: number
+    earned: number
   }
 
   export interface Contract extends EthersContract {
-    addToken(address: Token['0'], contractAddress: Token['1']): Promise<Token>
-    getTokenDetails(address: Token['0']): Promise<TokenDetails>
+    addToken(address: Token['tokenAddress'], contractAddress: Token['dataFeedAddress']): Promise<Token>
+    getTokenDetails(address: Token['tokenAddress']): Promise<TokenDetails>
     getTokenList(): Promise<Token[]>
 
-    stake(tokenAddress: Token['0'], amount: number): Promise<StakeDetails>
-    getStakeDetails(tokenAddress: Token['0']): Promise<StakeDetails>
-    getStakeDetailsForAddress(address: string, tokenAddress: Token['0']): Promise<StakeDetails>
-    unstake(tokenAddress: Token['0'], amount: number): Promise<StakeDetails>
+    stake(tokenAddress: Token['tokenAddress'], amount: number): Promise<StakeDetails>
+    getStakeDetails(tokenAddress: Token['tokenAddress']): Promise<StakeDetails>
+    getStakeDetailsForAddress(address: string, tokenAddress: Token['tokenAddress']): Promise<StakeDetails>
+    unstake(tokenAddress: Token['tokenAddress'], amount: number): Promise<StakeDetails>
 
-    getEstimatedSwapDetails(fromTokenAddress: Token['0'], toTokenAddress: Token['0'], fromTokenAmount: number): Promise<{
-      0: number,
-      1: number,
-      2: number,
+    getEstimatedSwapDetails(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number): Promise<{
+      swapRate: number,
+      comissionRate: number,
+      estimatedSwapOutput: number,
     }>
-    swap(fromTokenAddress: Token['0'], toTokenAddress: Token['0'], fromTokenAmount: number): Promise<StakeDetails>
-    swapWithSlippageCheck(fromTokenAddress: Token['0'], toTokenAddress: Token['0'], fromTokenAmount: number, expectedToTokenAmount: number): Promise<StakeDetails>
-    withdrawAllStakingProfits(fromTokenAddress: Token['0']): Promise<StakeDetails['1']>
+    swap(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number): Promise<StakeDetails>
+    swapWithSlippageCheck(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number, expectedToTokenAmount: number): Promise<StakeDetails>
+    withdrawAllStakingProfits(fromTokenAddress: Token['tokenAddress']): Promise<StakeDetails['earned']>
 
-    getTreasuryBalance(tokenAddress: Token['0']): Promise<number>
-    withdrawTreasury(tokenAddress: Token['0']): Promise<number>
+    getTreasuryBalance(tokenAddress: Token['tokenAddress']): Promise<number>
+    withdrawTreasury(tokenAddress: Token['tokenAddress']): Promise<number>
+
+    connect(address: SignerWithAddress): Contract
   }
 }
 
@@ -72,7 +74,7 @@ describe('ALSMADEX', () => {
   let kbtc: EthersContract;
   let kusdt: EthersContract;
 
-  const BTC_TOKEN_SYMBOL = 'KBTC';
+  // const BTC_TOKEN_SYMBOL = 'KBTC';
   let BTC_DATA_FEED_CONTRACT: EthersContract;
   let BTC_TO_USD_RATE: number;
 
@@ -152,7 +154,7 @@ describe('ALSMADEX', () => {
       });
 
       it('Should add token as owner', async () => {
-        const { 0: tokenAddress } = await contract.addToken(
+        const { tokenAddress } = await contract.addToken(
           kbtc.address, // token address
           BTC_DATA_FEED_CONTRACT.address, // data feed contract address
         );
@@ -188,9 +190,9 @@ describe('ALSMADEX', () => {
         expect(tokenList.length).to.equal(2);
 
         tokenList.forEach((token) => {
-          expect(token[0]).to.be('string');
-          expect(token[1]).to.be('string');
-          expect(token[2]).to.be('string');
+          expect(token.tokenAddress).to.be('string');
+          expect(token.dataFeedAddress).to.be('string');
+          expect(token.symbol).to.be('string');
         });
       });
 
@@ -202,11 +204,11 @@ describe('ALSMADEX', () => {
 
         const token = await contract.connect(addr1).getTokenDetails(kbtc.address);
 
-        expect(token[0]).to.equal(kbtc.address);
-        expect(token[1]).to.equal(BTC_DATA_FEED_CONTRACT.address);
-        expect(token[2]).to.equal(0); // default balance
-        expect(token[3]).to.be.equal(BTC_TO_USD_RATE);
-        expect(token[4]).to.be('number'); // to be tested in «Stacking program» part
+        expect(token.tokenAddress).to.equal(kbtc.address);
+        expect(token.dataFeedAddress).to.equal(BTC_DATA_FEED_CONTRACT.address);
+        expect(token.symbol).to.equal(0); // default balance
+        expect(token.balance).to.be.equal(BTC_TO_USD_RATE);
+        expect(token.exchangeRate).to.be('number'); // to be tested in «Stacking program» part
       });
     });
   });
@@ -281,7 +283,7 @@ describe('ALSMADEX', () => {
     });
 
     it('Should stake tokens', async () => {
-      const { 0: staked, 1: earned } = await approveAllTokensAndStake(addr1);
+      const { staked, earned } = await approveAllTokensAndStake(addr1);
 
       expect(staked).to.equal(DEFAULT_STAKE_AMOUNT);
       expect(earned).to.equal(0);
@@ -290,7 +292,7 @@ describe('ALSMADEX', () => {
     it('Should get staking details', async () => {
       await approveAllTokensAndStake(addr1);
 
-      const { 0: staked, 1: earned } = await contract.connect(addr1).getStakeDetails(
+      const { staked, earned } = await contract.connect(addr1).getStakeDetails(
         kbtc.address,
       );
 
@@ -299,13 +301,13 @@ describe('ALSMADEX', () => {
     });
 
     it('Should recalculate token comission after staking', async () => {
-      const { 5: initialComissionRate } = await contract.connect(addr1).getTokenDetails(
+      const { comissionRate: initialComissionRate } = await contract.connect(addr1).getTokenDetails(
         kbtc.address,
       );
 
       await approveAllTokensAndStake(addr1);
 
-      const { 5: nextComissionRate } = await contract.connect(addr1).getTokenDetails(
+      const { comissionRate: nextComissionRate } = await contract.connect(addr1).getTokenDetails(
         kbtc.address,
       );
 
@@ -326,12 +328,12 @@ describe('ALSMADEX', () => {
         DEFAULT_STAKE_AMOUNT,
       );
 
-      const { 1: earnedOnAddr1 } = await contract.connect(addr1).getStakeDetailsForAddress(
+      const { earned: earnedOnAddr1 } = await contract.connect(addr1).getStakeDetailsForAddress(
         addr1.address,
         kbtc.address,
       );
 
-      const { 1: earnedOnOwner } = await contract.connect(addr1).getStakeDetailsForAddress(
+      const { earned: earnedOnOwner } = await contract.connect(addr1).getStakeDetailsForAddress(
         owner.address,
         kbtc.address,
       );
@@ -357,7 +359,7 @@ describe('ALSMADEX', () => {
         DEFAULT_STAKE_AMOUNT,
       );
 
-      const { 1: earnedAfterSwap } = await contract.connect(addr1)
+      const { earned: earnedAfterSwap } = await contract.connect(addr1)
         .getStakeDetails(kbtc.address);
 
       const nextBalance = kbtc.balanceOf(addr1.address);
@@ -383,14 +385,14 @@ describe('ALSMADEX', () => {
       await approveAllTokensAndStake(addr1);
 
       const beforeUnstakeBalance = kbtc.balanceOf(addr1.address);
-      const { 0: beforeUnstakeStakingBalance } = await contract.connect(addr1).getStakeDetails
-        .call(kbtc.address);
+      const { staked: beforeUnstakeStakingBalance } = await contract.connect(addr1).getStakeDetails
+        .call(this, kbtc.address);
 
       await contract.connect(addr1).unstake.bind(this, kbtc.address, DEFAULT_STAKE_AMOUNT);
 
       const afterUnstakeBalance = kbtc.balanceOf(addr1.address);
-      const { 0: afterUnstakeStakingBalance } = await contract.connect(addr1).getStakeDetails
-        .call(kbtc.address);
+      const { staked: afterUnstakeStakingBalance } = await contract.connect(addr1).getStakeDetails
+        .call(this, kbtc.address);
 
       expect(afterUnstakeBalance - beforeUnstakeBalance).to.equal(DEFAULT_STAKE_AMOUNT);
       expect(beforeUnstakeStakingBalance).to.equal(DEFAULT_STAKE_AMOUNT);
@@ -426,9 +428,9 @@ describe('ALSMADEX', () => {
 
     it('Should return estimated swap details', async () => {
       const {
-        0: swapRate,
-        1: comissionRate,
-        2: estimatedSwapOutput,
+        swapRate,
+        comissionRate,
+        estimatedSwapOutput,
       } = await contract.getEstimatedSwapDetails(
         kbtc.address, // swap input token
         kusdt.address, // swap output token
@@ -450,7 +452,7 @@ describe('ALSMADEX', () => {
       const kusdtBalanceBeforeSwap = await kusdt.balanceOf(addr1.address);
 
       const {
-        2: estimatedSwapOutput,
+        estimatedSwapOutput,
       } = await contract.connect(addr1).getEstimatedSwapDetails(
         kbtc.address,
         kusdt.address,
@@ -532,7 +534,7 @@ describe('ALSMADEX', () => {
 
     it('Should fail to swap with more than 0.5% slippage', async () => {
       const {
-        2: estimatedSwapOutput,
+        estimatedSwapOutput,
       } = await contract.connect(addr1).getEstimatedSwapDetails.call(
         this,
         kbtc.address,
