@@ -20,3 +20,5 @@ KUSDT — [`0x00f47C20E5fDbf5A5556963A555879923a9E19e5`](https://mumbai.polygons
    - How to test interaction with other contracts
  
 -->
+
+2. Voting for new tokens (and adding them)
