@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import { ethers } from 'hardhat';
 import { BigNumber, Contract } from 'ethers';
 
-describe.only('DataFeedUSDTUSDMock', () => {
+describe('DataFeedUSDTUSDMock', () => {
   let contract: Contract;
 
   before(async () => {

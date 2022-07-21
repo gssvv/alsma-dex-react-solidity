@@ -29,6 +29,12 @@ contract ALSMADEXTokens is Ownable {
 
     Token[] tokens;
 
+    event TokenCreate(
+        address _tokenAddress,
+        address _tokenDataFeedAddress,
+        string _tokenContractSymbol
+    );
+
     function addToken(address tokenAddress, address tokenDataFeedAddress)
         external
         onlyOwner
@@ -43,17 +49,19 @@ contract ALSMADEXTokens is Ownable {
         tokenContract.balanceOf(tokenAddress); // prevents adding wrong contracts
         DataFeed(tokenDataFeedAddress).latestRoundData(); // prevents adding wrong contracts
 
-        string memory tokenContractName = tokenContract.name();
+        string memory tokenContractSymbol = tokenContract.symbol();
 
         tokens.push(
-            Token(tokenAddress, tokenDataFeedAddress, tokenContractName)
+            Token(tokenAddress, tokenDataFeedAddress, tokenContractSymbol)
         );
 
-        return (tokenAddress, tokenDataFeedAddress, tokenContractName);
-    }
+        emit TokenCreate(
+            tokenAddress,
+            tokenDataFeedAddress,
+            tokenContractSymbol
+        );
 
-    function test() external returns (uint104) {
-        return 1;
+        return (tokenAddress, tokenDataFeedAddress, tokenContractSymbol);
     }
 }
 

@@ -29,6 +29,11 @@ namespace ALSMADEX {
     earned: number
   }
 
+  export enum RevertReason {
+    CALLER_IS_NOT_OWNER = 'Ownable: caller is not the owner',
+    UNEXPECTED_AMOUNT_OF_DATA = 'function returned an unexpected amount of data'
+  }
+
   export interface Contract extends EthersContract {
     addToken(address: Token['tokenAddress'], contractAddress: Token['dataFeedAddress']): Promise<Token>
     getTokenDetails(address: Token['tokenAddress']): Promise<TokenDetails>
@@ -74,7 +79,7 @@ describe('ALSMADEX', () => {
   let kbtc: EthersContract;
   let kusdt: EthersContract;
 
-  // const BTC_TOKEN_SYMBOL = 'KBTC';
+  let BTC_TOKEN_SYMBOL: string;
   let BTC_DATA_FEED_CONTRACT: EthersContract;
   let BTC_TO_USD_RATE: number;
 
@@ -97,7 +102,8 @@ describe('ALSMADEX', () => {
     await kusdt.transfer(addr1.address, ADDR1_KUSDT_BALANCE);
 
     BTC_DATA_FEED_CONTRACT = await (await ethers.getContractFactory('DataFeedBTCUSDMock')).deploy();
-    BTC_TO_USD_RATE = (await BTC_DATA_FEED_CONTRACT.latestRoundData())['1'];
+    BTC_TO_USD_RATE = (await BTC_DATA_FEED_CONTRACT.latestRoundData()).answer;
+    BTC_TOKEN_SYMBOL = await kbtc.symbol();
 
     USDT_DATA_FEED_CONTRACT = await (await ethers.getContractFactory('DataFeedUSDTUSDMock')).deploy();
     // USDT_TO_USD_RATE = (await USDT_DATA_FEED_CONTRACT.latestRoundData())['1'];
@@ -107,7 +113,7 @@ describe('ALSMADEX', () => {
     contract = await deployContract();
   });
 
-  describe.only('Configuration', () => {
+  describe('Configuration', () => {
     beforeEach(async () => {
       contract = await deployContract();
     });
@@ -118,61 +124,53 @@ describe('ALSMADEX', () => {
       });
 
       it('Should fail to add token as non-owner', async () => {
-        expect(
-          await isThrowingErrorAsync(
-            contract.connect(addr1).addToken.bind(
-              this,
-              kbtc.address, // token address
-              BTC_DATA_FEED_CONTRACT.address, // data feed contract address
-            ),
+        await expect(
+          contract.connect(addr1).addToken(
+            kbtc.address, // token address
+            BTC_DATA_FEED_CONTRACT.address, // data feed contract address
           ),
-        ).to.equal(true, 'Throws an error');
+        ).to.be.revertedWith(ALSMADEX.RevertReason.CALLER_IS_NOT_OWNER);
       });
 
       it('Should fail to add non-erc20 token', async () => {
-        expect(
-          await isThrowingErrorAsync(
-            contract.addToken.bind(
-              this,
-              contract.address, // token address
-              BTC_DATA_FEED_CONTRACT.address, // data feed contract address
-            ),
+        await expect(
+          contract.addToken(
+            contract.address, // token address
+            BTC_DATA_FEED_CONTRACT.address, // data feed contract address
           ),
-        ).to.equal(true, 'Throws an error');
+        ).to.be.revertedWith(ALSMADEX.RevertReason.UNEXPECTED_AMOUNT_OF_DATA);
       });
 
       it('Should fail to add token with incorrect data feed contract', async () => {
-        expect(
-          await isThrowingErrorAsync(
-            contract.addToken.bind(
-              this,
-              kbtc.address, // token address
-              contract.address, // is not data feed
-            ),
+        await expect(
+          contract.addToken(
+            kbtc.address, // token address
+            contract.address, // is not data feed
           ),
-        ).to.equal(true, 'Throws an error');
+        ).to.be.revertedWith(ALSMADEX.RevertReason.UNEXPECTED_AMOUNT_OF_DATA);
       });
 
-      it('Should add token as owner', async () => {
-        const { tokenAddress } = await contract.addToken(
+      it.only('Should add token as owner', async () => {
+        expect(contract.addToken(
           kbtc.address, // token address
           BTC_DATA_FEED_CONTRACT.address, // data feed contract address
-        );
-        // expect(token['0']).to.equal(kbtc.address);
-        // expect(token['1']).to.equal(BTC_DATA_FEED_CONTRACT.address);
-        // expect(token['2']).to.equal(BTC_TOKEN_SYMBOL);
+        )).to
+          .emit(contract, 'TokenCreate')
+          .withArgs(kbtc.address, BTC_DATA_FEED_CONTRACT.address, BTC_TOKEN_SYMBOL);
       });
 
       it('Should fail to add token with contract that already exists', async () => {
-        expect(
-          await isThrowingErrorAsync(
-            contract.addToken.bind(
-              this,
-              kbtc.address, // token address
-              BTC_DATA_FEED_CONTRACT.address, // data feed contract address
-            ),
+        await contract.addToken(
+          kbtc.address,
+          BTC_DATA_FEED_CONTRACT.address,
+        );
+
+        await expect(
+          contract.addToken(
+            kbtc.address,
+            BTC_DATA_FEED_CONTRACT.address,
           ),
-        ).to.equal(true, 'Throws an error');
+        ).to.be.reverted;
       });
 
       it('Should return list of tokens', async () => {
