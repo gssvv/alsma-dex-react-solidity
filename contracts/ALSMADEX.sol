@@ -22,12 +22,11 @@ interface DataFeed {
 
 contract ALSMADEXTokens is Ownable {
     struct Token {
-        address tokenAddress;
         address dataFeedAddress;
         string symbol;
     }
 
-    Token[] tokens;
+    mapping(address => Token) tokens;
 
     event TokenCreate(
         address _tokenAddress,
@@ -38,12 +37,12 @@ contract ALSMADEXTokens is Ownable {
     function addToken(address tokenAddress, address tokenDataFeedAddress)
         external
         onlyOwner
-        returns (
-            address,
-            address,
-            string memory
-        )
     {
+        require(
+            tokens[tokenAddress].dataFeedAddress == address(0),
+            "Add the token that already exists"
+        );
+
         ERC20 tokenContract = ERC20(tokenAddress);
 
         tokenContract.balanceOf(tokenAddress); // prevents adding wrong contracts
@@ -51,17 +50,13 @@ contract ALSMADEXTokens is Ownable {
 
         string memory tokenContractSymbol = tokenContract.symbol();
 
-        tokens.push(
-            Token(tokenAddress, tokenDataFeedAddress, tokenContractSymbol)
-        );
+        tokens[tokenAddress] = Token(tokenDataFeedAddress, tokenContractSymbol);
 
         emit TokenCreate(
             tokenAddress,
             tokenDataFeedAddress,
             tokenContractSymbol
         );
-
-        return (tokenAddress, tokenDataFeedAddress, tokenContractSymbol);
     }
 }
 

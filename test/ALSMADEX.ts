@@ -150,7 +150,7 @@ describe('ALSMADEX', () => {
         ).to.be.revertedWith(ALSMADEX.RevertReason.UNEXPECTED_AMOUNT_OF_DATA);
       });
 
-      it.only('Should add token as owner', async () => {
+      it('Should add token as owner', async () => {
         expect(contract.addToken(
           kbtc.address, // token address
           BTC_DATA_FEED_CONTRACT.address, // data feed contract address
@@ -170,7 +170,7 @@ describe('ALSMADEX', () => {
             kbtc.address,
             BTC_DATA_FEED_CONTRACT.address,
           ),
-        ).to.be.reverted;
+        ).to.be.revertedWith('Add the token that already exists');
       });
 
       it('Should return list of tokens', async () => {
