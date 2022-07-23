@@ -42,7 +42,7 @@ namespace ALSMADEX {
 
     stake(tokenAddress: Token['tokenAddress'], amount: number): Promise<StakeDetails>
     getStakeDetails(tokenAddress: Token['tokenAddress']): Promise<StakeDetails>
-    getStakeDetailsForAddress(address: string, tokenAddress: Token['tokenAddress']): Promise<StakeDetails>
+    getStakeDetailsForAccount(tokenAddress: Token['tokenAddress'], accountAddress: string,): Promise<StakeDetails>
     unstake(tokenAddress: Token['tokenAddress'], amount: number): Promise<StakeDetails>
 
     getEstimatedSwapDetails(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number): Promise<{
@@ -54,7 +54,7 @@ namespace ALSMADEX {
     swapWithSlippageCheck(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number, expectedToTokenAmount: number): Promise<StakeDetails>
     withdrawAllStakingProfits(fromTokenAddress: Token['tokenAddress']): Promise<StakeDetails['earned']>
 
-    getTreasuryBalance(tokenAddress: Token['tokenAddress']): Promise<number>
+    getTreasuryBalance(tokenAddress: Token['tokenAddress']): Promise<BigNumber>
     withdrawTreasury(tokenAddress: Token['tokenAddress']): Promise<number>
 
     connect(address: SignerWithAddress): Contract
@@ -247,7 +247,7 @@ describe('ALSMADEX', () => {
         contract.address,
         ADDR1_KBTC_BALANCE,
       );
-      return contract.connect(addr).stake(
+      return await contract.connect(addr).stake(
         kbtc.address,
         amount,
       );
@@ -287,7 +287,7 @@ describe('ALSMADEX', () => {
     });
 
     it('Should get stake details', async () => {
-      await (await approveAllTokensAndStake(addr1));
+      await approveAllTokensAndStake(addr1);
 
       const { staked, earned } = await contract.connect(addr1).getStakeDetails(
         kbtc.address,
@@ -318,38 +318,37 @@ describe('ALSMADEX', () => {
       expect(nextComissionRate.toNumber()).to.be.greaterThan(initialComissionRate.toNumber());
     });
 
-    it('Should distribute profits from swap comission among stakers and DEX', async () => {
+    it.only('Should distribute profits from swap comission among stakers and DEX', async () => {
       await approveAllTokensAndStake(addr1);
-      await approveAllTokensAndStake(
-        owner,
-        DEFAULT_STAKE_AMOUNT / 2,
-      ); // less stake means less profits
 
-      await contract.swap.call(
-        { from: owner },
+      await kbtc.approve(contract.address, DEFAULT_STAKE_AMOUNT);
+      await contract.stake(kbtc.address, DEFAULT_STAKE_AMOUNT / 2); // less share to earn less
+
+      await contract.connect(addr1).swap(
         kbtc.address,
         kusdt.address,
         DEFAULT_STAKE_AMOUNT,
       );
 
-      const { earned: earnedOnAddr1 } = await contract.connect(addr1).getStakeDetailsForAddress(
-        addr1.address,
+      const { earned: earnedOnAddr1 } = await contract.connect(addr1).getStakeDetailsForAccount(
         kbtc.address,
+        addr1.address,
       );
 
-      const { earned: earnedOnOwner } = await contract.connect(addr1).getStakeDetailsForAddress(
-        owner.address,
+      const { earned: earnedOnOwner } = await contract.connect(addr1).getStakeDetailsForAccount(
         kbtc.address,
+        owner.address,
       );
 
       const treasuryBalance = await contract.getTreasuryBalance(
         kbtc.address,
       );
 
-      expect(earnedOnAddr1).to.be.greaterThan(0);
-      expect(earnedOnOwner).to.be.greaterThan(0);
-      expect(earnedOnAddr1).to.be.greaterThan(earnedOnOwner); // as owner staked less than addr1
-      expect(treasuryBalance).to.be.greaterThan(0); // as owner staked less than addr1
+      expect(earnedOnAddr1.toNumber()).to.be.greaterThan(0);
+      expect(earnedOnOwner.toNumber()).to.be.greaterThan(0);
+      expect(earnedOnAddr1.toNumber()).to.be
+        .greaterThan(earnedOnOwner.toNumber()); // as owner staked less than addr1
+      expect(treasuryBalance.toNumber()).to.be.greaterThan(0); // as owner staked less than addr1
     });
 
     it('Should withdraw staking profits', async () => {

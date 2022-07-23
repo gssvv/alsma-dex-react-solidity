@@ -125,12 +125,35 @@ contract ALSMADEXTokens is Ownable {
     }
 }
 
-contract ALSMADEXStaking is ALSMADEXTokens {
+contract ALSMADEXTreasury is ALSMADEXTokens {
+    mapping(address => uint256) treasury;
+
+    // external
+
+    function getTreasuryBalance(address tokenAddress)
+        external
+        view
+        returns (uint256)
+    {
+        return treasury[tokenAddress];
+    }
+
+    // internal
+
+    function _sendTokensToTreasury(address tokenAddress, uint256 amount)
+        internal
+    {
+        treasury[tokenAddress] += amount;
+    }
+}
+
+contract ALSMADEXStaking is ALSMADEXTreasury {
     // Type declarations
     struct StakeDetails {
         uint256 staked;
         uint256 earned;
     }
+    mapping(address => address[]) tokenAddressToStakerAddressList; // used for comission distribution
 
     // State variables
     mapping(address => mapping(address => StakeDetails)) tokenToStakerToStakeDetails;
@@ -140,27 +163,32 @@ contract ALSMADEXStaking is ALSMADEXTokens {
 
     // Modifiers
     // External
-    function stake(address tokenAddress, uint256 stakeEmount) external {
+    function stake(address tokenAddress, uint256 stakeAmount) external {
         ERC20 tokenContract = ERC20(tokenAddress);
         (uint256 tokenIndex, bool isTokenAdded) = _getTokenIndexByAddress(
             tokenAddress
         );
 
         require(isTokenAdded, "Token does not exist");
+        require(stakeAmount > 0, "Stake amount must be greater than 0");
         require(
-            _getBalanceOfToken(tokenAddress, msg.sender) >= stakeEmount,
+            _getBalanceOfToken(tokenAddress, msg.sender) >= stakeAmount,
             "Not enough tokens on balance"
         );
         require(
-            tokenContract.allowance(msg.sender, address(this)) >= stakeEmount,
+            tokenContract.allowance(msg.sender, address(this)) >= stakeAmount,
             "Not enough approved tokens"
         );
 
         // transfer tokens to DEX account
-        tokenContract.transferFrom(msg.sender, address(this), stakeEmount);
+        tokenContract.transferFrom(msg.sender, address(this), stakeAmount);
         // make a record about the stake
         tokenToStakerToStakeDetails[tokenAddress][msg.sender]
-            .staked = stakeEmount;
+            .staked = stakeAmount;
+        // put the address to the list for further distribution
+        if (!_stakerExists(tokenAddress, msg.sender)) {
+            tokenAddressToStakerAddressList[tokenAddress].push(msg.sender);
+        }
 
         emit Stake(tokenToStakerToStakeDetails[tokenAddress][msg.sender]);
     }
@@ -171,6 +199,40 @@ contract ALSMADEXStaking is ALSMADEXTokens {
         returns (StakeDetails memory)
     {
         return tokenToStakerToStakeDetails[tokenAddress][msg.sender];
+    }
+
+    function getStakeDetailsForAccount(
+        address tokenAddress,
+        address accountAddress
+    ) external view returns (StakeDetails memory) {
+        return tokenToStakerToStakeDetails[tokenAddress][accountAddress];
+    }
+
+    // internal
+
+    function _stakerExists(address tokenAddress, address accountAddress)
+        internal
+        view
+        returns (bool)
+    {
+        for (
+            uint256 i = 0;
+            i < tokenAddressToStakerAddressList[tokenAddress].length;
+            i++
+        ) {
+            if (
+                tokenAddressToStakerAddressList[tokenAddress][i] ==
+                accountAddress
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function _getTotalSupply(address tokenAddress) internal returns (uint256) {
+        return ERC20(tokenAddress).balanceOf(address(this));
     }
 }
 
@@ -188,7 +250,6 @@ contract ALSMADEXComission is ALSMADEXStaking {
     {
         (token, balance, exchangeRate) = _getTokenDetails(tokenAddress);
         comissionRate = _calculateComissionRateForToken(token.tokenAddress);
-        console.log("comission %s for %s", comissionRate, tokenAddress);
     }
 
     // internal
@@ -201,7 +262,7 @@ contract ALSMADEXComission is ALSMADEXStaking {
      * Here — tokens compared all between each other.
      *
      * Meaning that if we have one token with extremely large pool,
-     * it will dump comission for other.
+     * it will dump comission for others.
      *
      * Conditions:
      * - bigger pool (compared to other tokens) — less comission
@@ -231,7 +292,12 @@ contract ALSMADEXComission is ALSMADEXStaking {
 
         uint256 lowestAndGreatestDifference = greatestBalance - leastBalance;
 
-        if (lowestAndGreatestDifference == 0) return 500;
+        if (lowestAndGreatestDifference == 0) return 50000000;
+
+        // prevents underflow during comission calculation
+        tokenBalance = tokenBalance > lowestAndGreatestDifference
+            ? lowestAndGreatestDifference
+            : tokenBalance;
 
         uint256 comission = (((lowestAndGreatestDifference - tokenBalance) *
             10**8) / lowestAndGreatestDifference);
@@ -240,6 +306,106 @@ contract ALSMADEXComission is ALSMADEXStaking {
     }
 }
 
-contract ALSMADEX is ALSMADEXComission {
+contract ALSMADEXSwap is ALSMADEXComission {
+    // events
+    event Swap();
+
+    // external
+
+    function swap(
+        address fromTokenAddress,
+        address toTokenAddress,
+        uint256 fromAmount
+    ) external {
+        (
+            uint256 fromTokenIndex,
+            bool isFromTokenAdded
+        ) = _getTokenIndexByAddress(fromTokenAddress);
+        (uint256 toTokenIndex, bool isToTokenAdded) = _getTokenIndexByAddress(
+            toTokenAddress
+        );
+
+        require(isFromTokenAdded, "From token does not exist");
+        require(isToTokenAdded, "To token does not exist");
+
+        ERC20 tokenContract = ERC20(fromTokenAddress);
+
+        require(fromAmount > 0, "Stake amount must be greater than 0");
+        require(
+            _getBalanceOfToken(fromTokenAddress, msg.sender) >= fromAmount,
+            "Not enough tokens on balance"
+        );
+        require(
+            tokenContract.allowance(msg.sender, address(this)) >= fromAmount,
+            "Not enough approved tokens"
+        );
+
+        // uint256 targetAmount =
+        // require(
+        //             _getTotalSupply(toTokenAddress) >= targetAmount,
+        //             "Not enough tokens in supply"
+        //         );
+
+        _distributeComission(fromTokenAddress, fromAmount);
+    }
+
+    // internal
+
+    /**
+     * Distributes comission among stakers in tokenAddressToStakerAddressList[tokenAddress].
+     * Share depends on «staked» value from tokenToStakerToStakeDetails.
+     * Updates «earned» values.
+     */
+    function _distributeComission(address tokenAddress, uint256 amount)
+        internal
+    {
+        console.log("%s", amount);
+        uint256 totalSupply = _getTotalSupply(tokenAddress);
+        uint256 comission = _calculateComissionRateForToken(tokenAddress);
+        uint256 comissionShare = (comission * amount) / 10**8; // divide by comission decimals
+
+        uint256 residualShare = comissionShare;
+        comissionShare -= comissionShare / 10; // 10% belongs to DEX
+
+        /**
+         * Distiribute among stakers based on the size of their stake
+         * compared to the totalSupply
+         */
+        for (
+            uint256 i = 0;
+            i < tokenAddressToStakerAddressList[tokenAddress].length;
+            i++
+        ) {
+            address stakerAddress = tokenAddressToStakerAddressList[
+                tokenAddress
+            ][i];
+            StakeDetails storage stakerDetails = tokenToStakerToStakeDetails[
+                tokenAddress
+            ][stakerAddress];
+            uint256 stakerRelativeShare = (stakerDetails.staked * 10**8) /
+                totalSupply; // percent with 8 decimals
+            uint256 stakerShare = (comissionShare * stakerRelativeShare) /
+                10**8;
+
+            stakerDetails.earned += stakerShare;
+
+            residualShare -= stakerShare;
+        }
+
+        /**
+         * There can be a «left over» after distribution.
+         * Saving it to the treasury as well.
+         */
+        _sendTokensToTreasury(tokenAddress, residualShare);
+
+        emit Swap();
+    }
+}
+
+contract ALSMADEX is ALSMADEXSwap {
+    receive() external payable {
+        payable(owner()).transfer(msg.value);
+    }
+
     fallback() external {}
 }
