@@ -160,6 +160,8 @@ contract ALSMADEXStaking is ALSMADEXTreasury {
 
     // Events
     event Stake(StakeDetails stakeDetails);
+    event Unstake(uint256 amount);
+    event WithdrawStakingProfits(uint256 amount);
 
     // Modifiers
     // External
@@ -193,6 +195,20 @@ contract ALSMADEXStaking is ALSMADEXTreasury {
         emit Stake(tokenToStakerToStakeDetails[tokenAddress][msg.sender]);
     }
 
+    function unstake(address tokenAddress, uint256 amount) external {
+        StakeDetails storage stakeDetails = tokenToStakerToStakeDetails[
+            tokenAddress
+        ][msg.sender];
+
+        require(stakeDetails.staked > 0, "Nothing to unstake");
+        require(amount > 0, "Cannot unstake 0 tokens");
+
+        ERC20(tokenAddress).transfer(msg.sender, stakeDetails.staked);
+        stakeDetails.staked = 0;
+
+        emit Unstake(amount);
+    }
+
     function getStakeDetails(address tokenAddress)
         external
         view
@@ -206,6 +222,20 @@ contract ALSMADEXStaking is ALSMADEXTreasury {
         address accountAddress
     ) external view returns (StakeDetails memory) {
         return tokenToStakerToStakeDetails[tokenAddress][accountAddress];
+    }
+
+    function withdrawAllStakingProfits(address tokenAddress) external {
+        StakeDetails storage stakeDetails = tokenToStakerToStakeDetails[
+            tokenAddress
+        ][msg.sender];
+
+        require(stakeDetails.earned > 0, "Nothing to withdraw");
+
+        ERC20(tokenAddress).transfer(msg.sender, stakeDetails.earned);
+
+        emit WithdrawStakingProfits(stakeDetails.earned);
+
+        stakeDetails.earned = 0;
     }
 
     // internal
@@ -340,13 +370,16 @@ contract ALSMADEXSwap is ALSMADEXComission {
             "Not enough approved tokens"
         );
 
-        // uint256 targetAmount =
+        // simplified for now (1:1 ratio for every coin)
+        uint256 toAmount = fromAmount;
+
+        // uint256 toAmount =
         // require(
         //             _getTotalSupply(toTokenAddress) >= targetAmount,
         //             "Not enough tokens in supply"
         //         );
 
-        _distributeComission(fromTokenAddress, fromAmount);
+        _distributeComission(toTokenAddress, toAmount);
     }
 
     // internal
@@ -359,7 +392,6 @@ contract ALSMADEXSwap is ALSMADEXComission {
     function _distributeComission(address tokenAddress, uint256 amount)
         internal
     {
-        console.log("%s", amount);
         uint256 totalSupply = _getTotalSupply(tokenAddress);
         uint256 comission = _calculateComissionRateForToken(tokenAddress);
         uint256 comissionShare = (comission * amount) / 10**8; // divide by comission decimals
@@ -368,7 +400,7 @@ contract ALSMADEXSwap is ALSMADEXComission {
         comissionShare -= comissionShare / 10; // 10% belongs to DEX
 
         /**
-         * Distiribute among stakers based on the size of their stake
+         * Distribute among stakers based on the size of their stake
          * compared to the totalSupply
          */
         for (

@@ -318,15 +318,15 @@ describe('ALSMADEX', () => {
       expect(nextComissionRate.toNumber()).to.be.greaterThan(initialComissionRate.toNumber());
     });
 
-    it.only('Should distribute profits from swap comission among stakers and DEX', async () => {
+    it('Should distribute profits from swap comission among stakers and DEX', async () => {
       await approveAllTokensAndStake(addr1);
 
       await kbtc.approve(contract.address, DEFAULT_STAKE_AMOUNT);
       await contract.stake(kbtc.address, DEFAULT_STAKE_AMOUNT / 2); // less share to earn less
 
       await contract.connect(addr1).swap(
-        kbtc.address,
         kusdt.address,
+        kbtc.address,
         DEFAULT_STAKE_AMOUNT,
       );
 
@@ -354,50 +354,53 @@ describe('ALSMADEX', () => {
     it('Should withdraw staking profits', async () => {
       await approveAllTokensAndStake(addr1);
 
-      const initialBalance = kbtc.balanceOf(addr1.address);
+      const initialBalance = await kbtc.balanceOf(addr1.address);
 
+      await kusdt.approve(contract.address, DEFAULT_STAKE_AMOUNT);
       await contract.swap(
-        kbtc.address,
         kusdt.address,
+        kbtc.address,
         DEFAULT_STAKE_AMOUNT,
       );
 
       const { earned: earnedAfterSwap } = await contract.connect(addr1)
         .getStakeDetails(kbtc.address);
 
-      const nextBalance = kbtc.balanceOf(addr1.address);
+      await expect(contract.connect(addr1)
+        .withdrawAllStakingProfits(kbtc.address)).to
+        .emit(contract, 'WithdrawStakingProfits')
+        .withArgs(earnedAfterSwap);
 
-      const earnedAfterWithdrawal = await contract.connect(addr1)
-        .withdrawAllStakingProfits(kbtc.address);
+      const nextBalance = await kbtc.balanceOf(addr1.address);
 
-      expect(earnedAfterSwap).to.be.greaterThan(0); // earned something
-      expect(nextBalance).to.be.greaterThan(initialBalance); // received profit to the wallet
-      expect(earnedAfterWithdrawal).to.equal(0);
+      expect(earnedAfterSwap.toNumber()).to.be
+        .greaterThan(0); // earned something
+      expect(nextBalance.toNumber()).to.be
+        .greaterThan(initialBalance.toNumber()); // received profit to the wallet
     });
 
     it('Should fail to unstake more than staked', async () => {
-      // nothing is staked at this point
       expect(
-        await isThrowingErrorAsync(
-          contract.connect(addr1).unstake.bind(this, kbtc.address, 100),
-        ),
-      ).to.equal(true, 'Throws an error');
+        contract.connect(addr1).unstake(kbtc.address, 100),
+      ).to.be.revertedWith('Nothing to unstake');
     });
 
-    it('Should unstake and upadted balances correctly', async () => {
+    it('Should unstake and update balances correctly', async () => {
       await approveAllTokensAndStake(addr1);
 
-      const beforeUnstakeBalance = kbtc.balanceOf(addr1.address);
-      const { staked: beforeUnstakeStakingBalance } = await contract.connect(addr1).getStakeDetails
-        .call(this, kbtc.address);
+      const beforeUnstakeBalance = await kbtc.balanceOf(addr1.address);
+      const { staked: beforeUnstakeStakingBalance } = await contract.connect(addr1)
+        .getStakeDetails(kbtc.address);
 
-      await contract.connect(addr1).unstake.bind(this, kbtc.address, DEFAULT_STAKE_AMOUNT);
+      await expect(contract.connect(addr1)
+        .unstake(kbtc.address, DEFAULT_STAKE_AMOUNT))
+        .to.emit(contract, 'Unstake');
 
-      const afterUnstakeBalance = kbtc.balanceOf(addr1.address);
-      const { staked: afterUnstakeStakingBalance } = await contract.connect(addr1).getStakeDetails
-        .call(this, kbtc.address);
+      const afterUnstakeBalance: BigNumber = await kbtc.balanceOf(addr1.address);
+      const { staked: afterUnstakeStakingBalance } = await contract.connect(addr1)
+        .getStakeDetails(kbtc.address);
 
-      expect(afterUnstakeBalance - beforeUnstakeBalance).to.equal(DEFAULT_STAKE_AMOUNT);
+      expect(afterUnstakeBalance.sub(beforeUnstakeBalance)).to.equal(DEFAULT_STAKE_AMOUNT);
       expect(beforeUnstakeStakingBalance).to.equal(DEFAULT_STAKE_AMOUNT);
       expect(afterUnstakeStakingBalance).to.equal(0); // balance is 0 again
     });
