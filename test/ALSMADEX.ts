@@ -1,6 +1,6 @@
 import { ethers } from 'hardhat';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
-import { Contract as EthersContract } from 'ethers';
+import { BigNumber, Contract as EthersContract } from 'ethers';
 import { expect } from 'chai';
 
 /**
@@ -18,15 +18,16 @@ namespace ALSMADEX {
     symbol: string
   }
 
-  export interface TokenDetails extends Token {
-    balance: number
-    exchangeRate: number
-    comissionRate: number
+  export interface TokenDetails {
+    token: Token,
+    balance: BigNumber
+    exchangeRate: BigNumber
+    comissionRate: BigNumber
   }
 
   export interface StakeDetails {
-    staked: number
-    earned: number
+    staked: BigNumber
+    earned: BigNumber
   }
 
   export enum RevertReason {
@@ -183,15 +184,21 @@ describe('ALSMADEX', () => {
           USDT_DATA_FEED_CONTRACT.address, // data feed contract address
         );
 
-        const tokenList = await contract.getTokenList.call({ from: addr1 });
+        const tokenList = await contract.connect(addr1).getTokenList();
 
         expect(tokenList.length).to.equal(2);
 
         tokenList.forEach((token) => {
-          expect(token.tokenAddress).to.be('string');
-          expect(token.dataFeedAddress).to.be('string');
-          expect(token.symbol).to.be('string');
+          expect(token.tokenAddress).to.be.a('string');
+          expect(token.dataFeedAddress).to.be.a('string');
+          expect(token.symbol).to.be.a('string');
         });
+      });
+
+      it('Should fail to return details for token that does not exist', async () => {
+        expect(
+          contract.connect(addr1).getTokenDetails(kbtc.address),
+        ).to.be.revertedWith('Token does not exist');
       });
 
       it('Should return token details by address', async () => {
@@ -202,11 +209,13 @@ describe('ALSMADEX', () => {
 
         const token = await contract.connect(addr1).getTokenDetails(kbtc.address);
 
-        expect(token.tokenAddress).to.equal(kbtc.address);
-        expect(token.dataFeedAddress).to.equal(BTC_DATA_FEED_CONTRACT.address);
-        expect(token.symbol).to.equal(0); // default balance
-        expect(token.balance).to.be.equal(BTC_TO_USD_RATE);
-        expect(token.exchangeRate).to.be('number'); // to be tested in «Stacking program» part
+        expect(token.token.tokenAddress).to.equal(kbtc.address);
+        expect(token.token.dataFeedAddress).to.equal(BTC_DATA_FEED_CONTRACT.address);
+        expect(token.token.symbol).to.equal(BTC_TOKEN_SYMBOL); // default balance
+        expect(token.balance).to.be.equal(0);
+        expect(token.exchangeRate).to.equal(BTC_TO_USD_RATE);
+        // comissionRate to be tested in «Stacking program» part
+        expect(token.comissionRate.toNumber()).to.greaterThanOrEqual(0);
       });
     });
   });
