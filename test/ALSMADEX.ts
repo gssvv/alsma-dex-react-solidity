@@ -33,7 +33,16 @@ namespace ALSMADEX {
 
   export enum RevertReason {
     CALLER_IS_NOT_OWNER = 'Ownable: caller is not the owner',
-    UNEXPECTED_AMOUNT_OF_DATA = 'function returned an unexpected amount of data'
+    UNEXPECTED_AMOUNT_OF_DATA = 'function returned an unexpected amount of data',
+    NOTHING_TO_UNSTAKE = 'Nothing to unstake',
+    FROM_TOKEN_DOES_NOT_EXIST = 'From token does not exist',
+    TO_TOKEN_DOES_NOT_EXIST = 'To token does not exist',
+    NOT_ENOUGH_APPROVED_TOKENS = 'Not enough approved tokens',
+    NOT_ENOUGH_TOKENS_ON_BALANCE = 'Not enough tokens on balance',
+    NOT_ENOUGH_TOKENS_IN_SUPPLY = 'Not enough tokens in supply',
+    SPLIPPAGE_EXCEEDED = 'Slippage is more than 0.5%',
+    TOKEN_ALREADY_EXISTS = 'Add the token that already exists',
+    TOKEN_DOES_NOT_EXIST = 'Token does not exist',
   }
 
   export interface Contract extends EthersContract {
@@ -165,7 +174,7 @@ describe.only('ALSMADEX', () => {
             kbtc.address,
             BTC_DATA_FEED_CONTRACT.address,
           ),
-        ).to.be.revertedWith('Add the token that already exists');
+        ).to.be.revertedWith(ALSMADEX.RevertReason.TOKEN_ALREADY_EXISTS);
       });
 
       it('Should return list of tokens', async () => {
@@ -194,7 +203,7 @@ describe.only('ALSMADEX', () => {
     it('Should fail to return details for token that does not exist', async () => {
       expect(
         contract.connect(addr1).getTokenDetailsWithComission(kbtc.address),
-      ).to.be.revertedWith('Token does not exist');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.TOKEN_DOES_NOT_EXIST);
     });
 
     it('Should return token details by address', async () => {
@@ -254,7 +263,7 @@ describe.only('ALSMADEX', () => {
           contract.address, // there is no token with such contract
           DEFAULT_STAKE_AMOUNT,
         ),
-      ).to.be.revertedWith('Token does not exist');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.TOKEN_DOES_NOT_EXIST);
     });
 
     it('Should fail to stake when there are not enough of them on signer`s balance', async () => {
@@ -263,7 +272,7 @@ describe.only('ALSMADEX', () => {
           kbtc.address,
           DEFAULT_STAKE_AMOUNT,
         ),
-      ).to.be.revertedWith('Not enough tokens on balance');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.NOT_ENOUGH_TOKENS_ON_BALANCE);
     });
 
     it('Should fail to stake when there are not enough approved tokens', async () => {
@@ -272,7 +281,7 @@ describe.only('ALSMADEX', () => {
           kbtc.address,
           DEFAULT_STAKE_AMOUNT,
         ),
-      ).to.be.revertedWith('Not enough approved tokens');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.NOT_ENOUGH_APPROVED_TOKENS);
     });
 
     it('Should stake tokens', async () => {
@@ -382,7 +391,7 @@ describe.only('ALSMADEX', () => {
     it('Should fail to unstake more than staked', async () => {
       expect(
         contract.connect(addr1).unstake(kbtc.address, 100),
-      ).to.be.revertedWith('Nothing to unstake');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.NOTHING_TO_UNSTAKE);
     });
 
     it('Should unstake and update balances accordingly', async () => {
@@ -495,7 +504,7 @@ describe.only('ALSMADEX', () => {
           kusdt.address,
           SWAP_AMOUNT,
         ),
-      ).to.be.revertedWith('From token does not exist');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.FROM_TOKEN_DOES_NOT_EXIST);
     });
 
     it('Should fail to swap with wrong toToken', async () => {
@@ -505,7 +514,7 @@ describe.only('ALSMADEX', () => {
           contract.address, // this contract is not a token
           SWAP_AMOUNT,
         ),
-      ).to.be.revertedWith('To token does not exist');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.TO_TOKEN_DOES_NOT_EXIST);
     });
 
     it('Should fail to swap when not enough tokens on signer`s balance', async () => {
@@ -517,7 +526,7 @@ describe.only('ALSMADEX', () => {
           kusdt.address,
           balance + 1, // more than available
         ),
-      ).to.be.revertedWith('Not enough tokens on balance');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.NOT_ENOUGH_TOKENS_ON_BALANCE);
     });
 
     it('Should fail to swap when not enough tokens on contract`s balance', async () => {
@@ -533,7 +542,7 @@ describe.only('ALSMADEX', () => {
           kusdt.address,
           DEFAULT_STAKE_AMOUNT + 1, // more than available
         ),
-      ).to.be.revertedWith('Not enough tokens in supply');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.NOT_ENOUGH_TOKENS_IN_SUPPLY);
     });
 
     it('Should fail to swap with slippage more than 0.5%', async () => {
@@ -557,7 +566,7 @@ describe.only('ALSMADEX', () => {
           Math.round(SWAP_AMOUNT * 0.994), // adding 0.6% to make it fail
           toAmount.toNumber(),
         ),
-      ).to.be.revertedWith('Slippage is more than 0.5%');
+      ).to.be.revertedWith(ALSMADEX.RevertReason.SPLIPPAGE_EXCEEDED);
     });
 
     it('Should swap with slippage equal to 0.5%', async () => {
