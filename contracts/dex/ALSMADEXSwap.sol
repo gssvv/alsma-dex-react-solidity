@@ -49,7 +49,68 @@ contract ALSMADEXSwap is ALSMADEXComission {
         _distributeComission(toTokenAddress, toAmount);
     }
 
+    function getEstimatedSwapDetails(
+        address fromTokenAddress,
+        address toTokenAddress,
+        uint256 fromAmount
+    )
+        external
+        view
+        returns (
+            int256 exchangeRate,
+            uint256 comission,
+            uint256 toAmount
+        )
+    {
+        (
+            uint256 fromTokenIndex,
+            bool isFromTokenAdded
+        ) = _getTokenIndexByAddress(fromTokenAddress);
+        (uint256 toTokenIndex, bool isToTokenAdded) = _getTokenIndexByAddress(
+            toTokenAddress
+        );
+
+        require(isFromTokenAdded, "From token does not exist");
+        require(isToTokenAdded, "To token does not exist");
+
+        uint256 comissionRate = _calculateComissionRateForToken(
+            fromTokenAddress
+        );
+
+        comission = (fromAmount * comissionRate) / 10**10;
+        fromAmount -= comission;
+
+        (toAmount, exchangeRate) = _calculateExchange(
+            tokens[fromTokenIndex],
+            tokens[toTokenIndex],
+            fromAmount
+        );
+    }
+
     // internal
+    /**
+     * @dev Should take into account that decimals can be different.
+     * Currently — not.
+     */
+    function _calculateExchange(
+        Token storage fromToken,
+        Token storage toToken,
+        uint256 fromAmount
+    ) internal view returns (uint256 toAmount, int256 exchangeRate) {
+        (int256 fromTokenExchangeRate, ) = _getExchangeRateFromDataFeed(
+            fromToken.dataFeedAddress
+        );
+        (int256 toTokenExchangeRate, ) = _getExchangeRateFromDataFeed(
+            toToken.dataFeedAddress
+        );
+
+        toAmount =
+            (fromAmount * uint(fromTokenExchangeRate)) /
+            uint(toTokenExchangeRate);
+        console.log("fromAmount %s", fromAmount);
+        console.log("toAmount %s", toAmount);
+        exchangeRate = (fromTokenExchangeRate * 10**8) / toTokenExchangeRate;
+    }
 
     /**
      * Distributes comission among stakers in tokenAddressToStakerAddressList[tokenAddress].

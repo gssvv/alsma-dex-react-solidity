@@ -46,9 +46,9 @@ namespace ALSMADEX {
     unstake(tokenAddress: Token['tokenAddress'], amount: number): Promise<StakeDetails>
 
     getEstimatedSwapDetails(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number): Promise<{
-      swapRate: number,
-      comissionRate: number,
-      estimatedSwapOutput: number,
+      exchangeRate: BigNumber,
+      toAmount: BigNumber,
+      comission: BigNumber,
     }>
     swap(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number): Promise<StakeDetails>
     swapWithSlippageCheck(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number, expectedToTokenAmount: number): Promise<StakeDetails>
@@ -422,6 +422,13 @@ describe('ALSMADEX', () => {
 
     beforeEach(async () => {
       contract = await deployContract();
+
+      await contract.addToken(kbtc.address, BTC_DATA_FEED_CONTRACT.address);
+      await contract.addToken(kusdt.address, USDT_DATA_FEED_CONTRACT.address);
+
+      await kbtc.approve(contract.address, DEFAULT_STAKE_AMOUNT);
+      await kusdt.approve(contract.address, DEFAULT_STAKE_AMOUNT);
+
       await contract.stake(
         kbtc.address,
         DEFAULT_STAKE_AMOUNT,
@@ -434,21 +441,21 @@ describe('ALSMADEX', () => {
 
     it('Should return estimated swap details', async () => {
       const {
-        swapRate,
-        comissionRate,
-        estimatedSwapOutput,
+        exchangeRate,
+        comission,
+        toAmount,
       } = await contract.getEstimatedSwapDetails(
         kbtc.address, // swap input token
         kusdt.address, // swap output token
         SWAP_AMOUNT, // swap input token amount
       );
 
-      expect(swapRate).to.be.greaterThan(0);
-      expect(comissionRate).to.be.greaterThan(0);
-      expect(estimatedSwapOutput).to.be.greaterThan(0);
+      expect(exchangeRate.toNumber()).to.be.greaterThan(0);
+      expect(comission.toNumber()).to.be.greaterThan(0);
+      expect(toAmount.toNumber()).to.be.greaterThan(0);
     });
 
-    it('Should perform swap', async () => {
+    it.only('Should perform swap', async () => {
       await kbtc.approve(
         contract.address,
         ADDR1_KBTC_BALANCE,
@@ -458,7 +465,7 @@ describe('ALSMADEX', () => {
       const kusdtBalanceBeforeSwap = await kusdt.balanceOf(addr1.address);
 
       const {
-        estimatedSwapOutput,
+        toAmount,
       } = await contract.connect(addr1).getEstimatedSwapDetails(
         kbtc.address,
         kusdt.address,
@@ -476,7 +483,7 @@ describe('ALSMADEX', () => {
 
       expect(kbtcBalanceBeforeSwap).to.be.greaterThan(kbtcBalanceAfterSwap);
       expect(kusdtBalanceAfterSwap).to.be.greaterThan(kusdtBalanceBeforeSwap);
-      expect(kusdtBalanceBeforeSwap + estimatedSwapOutput).to.equal(kusdtBalanceAfterSwap);
+      expect(kusdtBalanceBeforeSwap + toAmount).to.equal(kusdtBalanceAfterSwap);
     });
 
     it('Should fail to swap with wrong fromToken', async () => {
@@ -540,7 +547,7 @@ describe('ALSMADEX', () => {
 
     it('Should fail to swap with more than 0.5% slippage', async () => {
       const {
-        estimatedSwapOutput,
+        toAmount,
       } = await contract.connect(addr1).getEstimatedSwapDetails.call(
         this,
         kbtc.address,
@@ -548,17 +555,14 @@ describe('ALSMADEX', () => {
         SWAP_AMOUNT,
       );
 
-      expect(
-        isThrowingErrorAsync(
-          contract.connect(addr1).swapWithSlippageCheck.bind(
-            this,
-            kbtc.address,
-            kusdt.address,
-            Math.round(SWAP_AMOUNT * 0.994), // substracting 0.6% to make it fail
-            estimatedSwapOutput,
-          ),
+      await expect(
+        contract.connect(addr1).swapWithSlippageCheck(
+          kbtc.address,
+          kusdt.address,
+          Math.round(SWAP_AMOUNT * 0.994), // substracting 0.6% to make it fail
+          toAmount.toNumber(),
         ),
-      ).to.equal(true, 'Throws an error');
+      ).to.be.reverted;
     });
   });
 });

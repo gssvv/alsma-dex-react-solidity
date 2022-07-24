@@ -85,9 +85,10 @@ contract ALSMADEXTokens is Ownable {
     function _getExchangeRateFromDataFeed(address dataFeedAddress)
         internal
         view
-        returns (int256 answer)
+        returns (int256 answer, uint8 decimals)
     {
         (, answer, , , ) = IDataFeed(dataFeedAddress).latestRoundData();
+        decimals = IDataFeed(dataFeedAddress).decimals();
     }
 
     function _getTokenDetails(address tokenAddress)
@@ -106,6 +107,6 @@ contract ALSMADEXTokens is Ownable {
 
         token = tokens[tokenIndex];
         balance = _getBalanceOfToken(token.tokenAddress, address(this));
-        exchangeRate = _getExchangeRateFromDataFeed(token.dataFeedAddress);
+        (exchangeRate, ) = _getExchangeRateFromDataFeed(token.dataFeedAddress);
     }
 }
