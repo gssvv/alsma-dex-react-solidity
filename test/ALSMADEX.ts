@@ -2,6 +2,7 @@ import { ethers } from 'hardhat';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import { BigNumber, Contract as EthersContract } from 'ethers';
 import { expect } from 'chai';
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
 
 /**
  * Polygon data feeds — https://docs.chain.link/docs/matic-addresses/
@@ -43,6 +44,7 @@ namespace ALSMADEX {
     SPLIPPAGE_EXCEEDED = 'Slippage is more than 0.5%',
     TOKEN_ALREADY_EXISTS = 'Add the token that already exists',
     TOKEN_DOES_NOT_EXIST = 'Token does not exist',
+    NOTHING_TO_WITHDRAW = 'Nothing to withdraw',
   }
 
   export interface Contract extends EthersContract {
@@ -415,12 +417,59 @@ describe.only('ALSMADEX', () => {
     });
   });
 
-  describe.skip('Treasury', () => {
-    it('Should return balance of a particular token', async () => {});
-    it('Should fail to withdraw as non-owner', async () => {});
-    it('Should fail to withdraw when there are not enough balance', async () => {});
-    it('Should withdraw particular sum as owner', async () => {});
-    it('Should withdraw all as owner', async () => {});
+  describe('Treasury', () => {
+    const topupTreasuryFixture = async () => {
+      const SWAP_AMOUNT = 10 ** 6;
+      const DEFAULT_STAKE_AMOUNT = 10 ** 12;
+
+      // add tokens
+      await contract.addToken(kbtc.address, BTC_DATA_FEED_CONTRACT.address);
+      await contract.addToken(kusdt.address, USDT_DATA_FEED_CONTRACT.address);
+
+      // stake
+      await kusdt.approve(contract.address, DEFAULT_STAKE_AMOUNT);
+      await contract.stake(kusdt.address, DEFAULT_STAKE_AMOUNT);
+
+      // swap
+      await kbtc.approve(contract.address, SWAP_AMOUNT);
+      await contract.swap(kbtc.address, kusdt.address, SWAP_AMOUNT);
+    };
+
+    it('Should return balance of a particular token', async () => {
+      await loadFixture(topupTreasuryFixture);
+      const treasuryBalance = await contract.getTreasuryBalance(kusdt.address);
+      expect(treasuryBalance.toNumber()).to.be.greaterThan(0);
+    });
+
+    it('Should fail to withdraw as non-owner', async () => {
+      await loadFixture(topupTreasuryFixture);
+
+      expect(
+        contract.connect(addr1).withdrawTreasury(kusdt.address),
+      ).to.be.revertedWith(ALSMADEX.RevertReason.CALLER_IS_NOT_OWNER);
+    });
+
+    it('Should fail to withdraw when there are not enough tokens on the balance', async () => {
+      expect(
+        contract.connect(addr1).withdrawTreasury(kusdt.address),
+      ).to.be.revertedWith(ALSMADEX.RevertReason.NOTHING_TO_WITHDRAW);
+    });
+
+    it.skip('Should withdraw as owner', async () => {
+      await loadFixture(topupTreasuryFixture);
+
+      const treasuryBalance = (await contract.getTreasuryBalance(kusdt.address)).toNumber();
+      const balanceBefore = await kusdt.balanceOf(owner.address);
+
+      await expect(
+        contract.withdrawTreasury(kusdt.address),
+      ).to.emit(contract, 'WithdrawTreasury').withArgs(treasuryBalance);
+
+      const balanceAfter = await kusdt.balanceOf(owner.address);
+
+      expect(await contract.getTreasuryBalance(kusdt.address)).to.equal(0);
+      expect(balanceAfter.sub(balanceBefore).toNumber()).to.be.greaterThan(0);
+    });
   });
 
   describe('Swap', () => {
