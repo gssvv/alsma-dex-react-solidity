@@ -385,7 +385,7 @@ describe('ALSMADEX', () => {
       ).to.be.revertedWith('Nothing to unstake');
     });
 
-    it('Should unstake and update balances correctly', async () => {
+    it('Should unstake and update balances accordingly', async () => {
       await approveAllTokensAndStake(addr1);
 
       const beforeUnstakeBalance = await kbtc.balanceOf(addr1.address);
