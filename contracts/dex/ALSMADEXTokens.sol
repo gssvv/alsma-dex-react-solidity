@@ -12,6 +12,7 @@ contract ALSMADEXTokens is Ownable {
         address tokenAddress;
         address dataFeedAddress;
         string symbol;
+        uint8 decimals;
     }
 
     // State variables
@@ -23,7 +24,8 @@ contract ALSMADEXTokens is Ownable {
     event TokenCreate(
         address _tokenAddress,
         address _tokenDataFeedAddress,
-        string _tokenContractSymbol
+        string _tokenContractSymbol,
+        uint8 decimals
     );
 
     // External
@@ -40,16 +42,27 @@ contract ALSMADEXTokens is Ownable {
         tokenContract.balanceOf(tokenAddress); // prevents adding wrong contracts
         IDataFeed(tokenDataFeedAddress).latestRoundData(); // prevents adding wrong contracts
 
+        require(
+            IDataFeed(tokenDataFeedAddress).decimals() == 8,
+            "DateFeed decimals must be 8"
+        );
+
         string memory tokenContractSymbol = tokenContract.symbol();
 
         tokens.push(
-            Token(tokenAddress, tokenDataFeedAddress, tokenContractSymbol)
+            Token(
+                tokenAddress,
+                tokenDataFeedAddress,
+                tokenContractSymbol,
+                tokenContract.decimals()
+            )
         );
 
         emit TokenCreate(
             tokenAddress,
             tokenDataFeedAddress,
-            tokenContractSymbol
+            tokenContractSymbol,
+            tokenContract.decimals()
         );
     }
 

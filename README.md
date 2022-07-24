@@ -22,3 +22,5 @@ KUSDT — [`0x00f47C20E5fDbf5A5556963A555879923a9E19e5`](https://mumbai.polygons
 -->
 
 2. Voting for new tokens (and adding them)
+3. Take decimals into account in `_calculateExchange()`
+4. More tests for calculations: `_calculateExchange`, `_distributeComission`

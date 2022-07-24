@@ -16,6 +16,7 @@ namespace ALSMADEX {
     tokenAddress: string
     dataFeedAddress: string
     symbol: string
+    decimals: BigNumber
   }
 
   export interface TokenDetails {
@@ -48,7 +49,7 @@ namespace ALSMADEX {
     getEstimatedSwapDetails(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number): Promise<{
       exchangeRate: BigNumber,
       toAmount: BigNumber,
-      comission: BigNumber,
+      comissionTo: BigNumber,
     }>
     swap(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number): Promise<StakeDetails>
     swapWithSlippageCheck(fromTokenAddress: Token['tokenAddress'], toTokenAddress: Token['tokenAddress'], fromTokenAmount: number, expectedToTokenAmount: number): Promise<StakeDetails>
@@ -61,16 +62,7 @@ namespace ALSMADEX {
   }
 }
 
-/**
- * @description Returns true is error was throwed. Otherwise — returns false.
- * @param {Function} fn
- * @returns {Promise<boolean>}
- */
-const isThrowingErrorAsync = (fn: Function): Promise<boolean> => new Promise((res) => {
-  fn().then(res.bind(this, false)).catch(res.bind(this, true));
-});
-
-describe('ALSMADEX', () => {
+describe.only('ALSMADEX', () => {
   let contract: ALSMADEX.Contract;
 
   let owner: SignerWithAddress;
@@ -83,6 +75,7 @@ describe('ALSMADEX', () => {
   let BTC_TOKEN_SYMBOL: string;
   let BTC_DATA_FEED_CONTRACT: EthersContract;
   let BTC_TO_USD_RATE: number;
+  let BTC_DECIMALS: number;
 
   // const USDT_TOKEN_SYMBOL = 'KUSDT';
   let USDT_DATA_FEED_CONTRACT: EthersContract;
@@ -105,6 +98,7 @@ describe('ALSMADEX', () => {
     BTC_DATA_FEED_CONTRACT = await (await ethers.getContractFactory('DataFeedBTCUSDMock')).deploy();
     BTC_TO_USD_RATE = (await BTC_DATA_FEED_CONTRACT.latestRoundData()).answer;
     BTC_TOKEN_SYMBOL = await kbtc.symbol();
+    BTC_DECIMALS = await kbtc.decimals();
 
     USDT_DATA_FEED_CONTRACT = await (await ethers.getContractFactory('DataFeedUSDTUSDMock')).deploy();
     // USDT_TO_USD_RATE = (await USDT_DATA_FEED_CONTRACT.latestRoundData())['1'];
@@ -157,7 +151,7 @@ describe('ALSMADEX', () => {
           BTC_DATA_FEED_CONTRACT.address, // data feed contract address
         )).to
           .emit(contract, 'TokenCreate')
-          .withArgs(kbtc.address, BTC_DATA_FEED_CONTRACT.address, BTC_TOKEN_SYMBOL);
+          .withArgs(kbtc.address, BTC_DATA_FEED_CONTRACT.address, BTC_TOKEN_SYMBOL, BTC_DECIMALS);
       });
 
       it('Should fail to add token with contract that already exists', async () => {
@@ -192,6 +186,7 @@ describe('ALSMADEX', () => {
           expect(token.tokenAddress).to.be.a('string');
           expect(token.dataFeedAddress).to.be.a('string');
           expect(token.symbol).to.be.a('string');
+          expect(token.decimals).to.be.equal(BTC_DECIMALS);
         });
       });
     });
@@ -324,10 +319,14 @@ describe('ALSMADEX', () => {
       await kbtc.approve(contract.address, DEFAULT_STAKE_AMOUNT);
       await contract.stake(kbtc.address, DEFAULT_STAKE_AMOUNT / 2); // less share to earn less
 
+      const SWAP_AMOUNT = 1_000_000_000;
+      await kusdt.mint(addr1.address, SWAP_AMOUNT);
+      await kusdt.connect(addr1).approve(contract.address, SWAP_AMOUNT);
+
       await contract.connect(addr1).swap(
         kusdt.address,
         kbtc.address,
-        DEFAULT_STAKE_AMOUNT,
+        SWAP_AMOUNT,
       );
 
       const { earned: earnedOnAddr1 } = await contract.connect(addr1).getStakeDetailsForAccount(
@@ -352,15 +351,16 @@ describe('ALSMADEX', () => {
     });
 
     it('Should withdraw staking profits', async () => {
+      const SWAP_AMOUNT = 1_000_000_000;
       await approveAllTokensAndStake(addr1);
 
       const initialBalance = await kbtc.balanceOf(addr1.address);
 
-      await kusdt.approve(contract.address, DEFAULT_STAKE_AMOUNT);
+      await kusdt.approve(contract.address, SWAP_AMOUNT);
       await contract.swap(
         kusdt.address,
         kbtc.address,
-        DEFAULT_STAKE_AMOUNT,
+        SWAP_AMOUNT,
       );
 
       const { earned: earnedAfterSwap } = await contract.connect(addr1)
@@ -406,7 +406,7 @@ describe('ALSMADEX', () => {
     });
   });
 
-  describe('Treasury', () => {
+  describe.skip('Treasury', () => {
     it('Should return balance of a particular token', async () => {});
     it('Should fail to withdraw as non-owner', async () => {});
     it('Should fail to withdraw when there are not enough balance', async () => {});
@@ -442,7 +442,7 @@ describe('ALSMADEX', () => {
     it('Should return estimated swap details', async () => {
       const {
         exchangeRate,
-        comission,
+        comissionTo,
         toAmount,
       } = await contract.getEstimatedSwapDetails(
         kbtc.address, // swap input token
@@ -451,18 +451,18 @@ describe('ALSMADEX', () => {
       );
 
       expect(exchangeRate.toNumber()).to.be.greaterThan(0);
-      expect(comission.toNumber()).to.be.greaterThan(0);
+      expect(comissionTo.toNumber()).to.be.greaterThan(0);
       expect(toAmount.toNumber()).to.be.greaterThan(0);
     });
 
-    it.only('Should perform swap', async () => {
-      await kbtc.approve(
+    it('Should perform swap', async () => {
+      await kbtc.connect(addr1).approve(
         contract.address,
         ADDR1_KBTC_BALANCE,
       );
 
       const kbtcBalanceBeforeSwap = await kbtc.balanceOf(addr1.address);
-      const kusdtBalanceBeforeSwap = await kusdt.balanceOf(addr1.address);
+      const kusdtBalanceBeforeSwap: BigNumber = await kusdt.balanceOf(addr1.address);
 
       const {
         toAmount,
@@ -472,84 +472,79 @@ describe('ALSMADEX', () => {
         SWAP_AMOUNT,
       );
 
-      await contract.connect(addr1).swap(
+      await expect(contract.connect(addr1).swap(
         kbtc.address,
         kusdt.address,
         SWAP_AMOUNT,
-      );
+      )).to.emit(contract, 'Swap');
 
       const kbtcBalanceAfterSwap = await kbtc.balanceOf(addr1.address);
       const kusdtBalanceAfterSwap = await kusdt.balanceOf(addr1.address);
 
-      expect(kbtcBalanceBeforeSwap).to.be.greaterThan(kbtcBalanceAfterSwap);
-      expect(kusdtBalanceAfterSwap).to.be.greaterThan(kusdtBalanceBeforeSwap);
-      expect(kusdtBalanceBeforeSwap + toAmount).to.equal(kusdtBalanceAfterSwap);
+      expect(kbtcBalanceBeforeSwap.sub(SWAP_AMOUNT)).to.be.equal(kbtcBalanceAfterSwap);
+      // BTC costs approximately x20000 more that USDT
+      expect(kusdtBalanceAfterSwap.toNumber()).to.be
+        .greaterThan(kusdtBalanceBeforeSwap.add(SWAP_AMOUNT * 20000).toNumber());
+      expect(kusdtBalanceBeforeSwap.add(toAmount)).to.equal(kusdtBalanceAfterSwap);
     });
 
     it('Should fail to swap with wrong fromToken', async () => {
-      expect(
-        isThrowingErrorAsync(
-          await contract.connect(addr1).swap.bind(
-            this,
-            contract.address, // this contract is not a token
-            kusdt.address,
-            SWAP_AMOUNT,
-          ),
+      await expect(
+        contract.connect(addr1).swap(
+          contract.address, // this contract is not a token
+          kusdt.address,
+          SWAP_AMOUNT,
         ),
-      ).to.equal(true, 'Throws an error');
+      ).to.be.revertedWith('From token does not exist');
     });
 
     it('Should fail to swap with wrong toToken', async () => {
-      expect(
-        isThrowingErrorAsync(
-          await contract.connect(addr1).swap.bind(
-            this,
-            kusdt.address,
-            contract.address, // this contract is not a token
-            SWAP_AMOUNT,
-          ),
+      await expect(
+        contract.connect(addr1).swap(
+          kusdt.address,
+          contract.address, // this contract is not a token
+          SWAP_AMOUNT,
         ),
-      ).to.equal(true, 'Throws an error');
+      ).to.be.revertedWith('To token does not exist');
     });
 
     it('Should fail to swap when not enough tokens on signer`s balance', async () => {
       const balance = await kbtc.balanceOf(addr1.address);
 
-      // otherwise the error may come from other reason
-      expect(DEFAULT_STAKE_AMOUNT).to.be.greaterThan(balance);
-
-      expect(
-        isThrowingErrorAsync(
-          await contract.connect(addr1).swap.bind(
-            this,
-            kbtc.address,
-            kusdt.address,
-            balance + 1, // more than available
-          ),
+      await expect(
+        contract.connect(addr1).swap(
+          kbtc.address,
+          kusdt.address,
+          balance + 1, // more than available
         ),
-      ).to.equal(true, 'Throws an error');
+      ).to.be.revertedWith('Not enough tokens on balance');
     });
 
     it('Should fail to swap when not enough tokens on contract`s balance', async () => {
       await kbtc.mint(addr1.address, DEFAULT_STAKE_AMOUNT + 1);
+      await kbtc.connect(addr1).approve(
+        contract.address,
+        DEFAULT_STAKE_AMOUNT + 1,
+      );
 
-      expect(
-        isThrowingErrorAsync(
-          await contract.connect(addr1).swap.bind(
-            this,
-            kbtc.address,
-            kusdt.address,
-            DEFAULT_STAKE_AMOUNT + 1, // more than available
-          ),
+      await expect(
+        contract.connect(addr1).swap(
+          kbtc.address,
+          kusdt.address,
+          DEFAULT_STAKE_AMOUNT + 1, // more than available
         ),
-      ).to.equal(true, 'Throws an error');
+      ).to.be.revertedWith('Not enough tokens in supply');
     });
 
-    it('Should fail to swap with more than 0.5% slippage', async () => {
+    it('Should fail to swap with slippage more than 0.5%', async () => {
+      await kbtc.connect(addr1).approve(
+        contract.address,
+        SWAP_AMOUNT * 2,
+      );
+
       const {
         toAmount,
-      } = await contract.connect(addr1).getEstimatedSwapDetails.call(
-        this,
+      } = await contract.connect(addr1).getEstimatedSwapDetails(
         kbtc.address,
         kusdt.address,
         SWAP_AMOUNT,
@@ -559,10 +554,34 @@ describe('ALSMADEX', () => {
         contract.connect(addr1).swapWithSlippageCheck(
           kbtc.address,
           kusdt.address,
-          Math.round(SWAP_AMOUNT * 0.994), // substracting 0.6% to make it fail
+          Math.round(SWAP_AMOUNT * 0.994), // adding 0.6% to make it fail
           toAmount.toNumber(),
         ),
-      ).to.be.reverted;
+      ).to.be.revertedWith('Slippage is more than 0.5%');
+    });
+
+    it('Should swap with slippage equal to 0.5%', async () => {
+      await kbtc.connect(addr1).approve(
+        contract.address,
+        SWAP_AMOUNT * 2,
+      );
+
+      const {
+        toAmount,
+      } = await contract.connect(addr1).getEstimatedSwapDetails(
+        kbtc.address,
+        kusdt.address,
+        SWAP_AMOUNT,
+      );
+
+      await expect(
+        contract.connect(addr1).swapWithSlippageCheck(
+          kbtc.address,
+          kusdt.address,
+          Math.round(SWAP_AMOUNT * 0.995), // adding 0.6% to make it fail
+          toAmount.toNumber(),
+        ),
+      ).to.emit(contract, 'Swap');
     });
   });
 });
