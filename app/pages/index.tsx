@@ -6,6 +6,7 @@ import styles from '../styles/Home.module.css';
 const Home: NextPage = forwardRef<any>(() => (
     <div className={styles.container}>
       <SwapWindow />
+      <div className='text-red-500'>asd</div>
     </div>
 ));
 

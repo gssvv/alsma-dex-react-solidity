@@ -2,6 +2,7 @@ module.exports = {
   env: {
     node: true,
     mocha: true,
+    browser: true,
   },
   parser: '@typescript-eslint/parser',
   plugins: [
@@ -9,6 +10,7 @@ module.exports = {
   ],
   extends: [
     'airbnb-base',
+    'plugin:react/recommended',
   ],
   rules: {
     radix: [0],
